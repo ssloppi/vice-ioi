@@ -1,7 +1,15 @@
 # VICE IOI
-The Versatile Commodore Emulator with additional I/O Interfaces for external application integration.
+The Versatile Commodore Emulator with additional I/O Interfaces for external application communication.
 
-VICE IOI is a port of VICE, the Versatile Commodore Emulator 3.3
+VICE IOI is a port of VICE, the Versatile Commodore Emulator 3.3.
+
+# Intended use
+This port provides additional interfaces for communicating with third-party applications.
+
+In case your usage doesn't require these additional interfaces, you should use the original VICE or some other relevant port/emulator.
+
+Original VICE exists here -> https://vice-emu.sourceforge.io/
+
 
 # Original readme
 
