@@ -50,3 +50,75 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# vscode
+**/.vscode/
+
+# Build files
+# Note! VICE build seems to generate files into src-folders?
+**/config.log
+**/aclocal.m4
+**/autom4te.cache/
+**/.deps/
+
+vice/GTK3VICE-*
+vice/Makefile*
+vice/build/**/Makefile*
+vice/build/**Makefile*
+vice/data/**/Makefile*
+vice/src/**/Makefile*
+vice/man/Makefile*
+
+vice/Compile
+vice/config.cache
+vice/config.status
+vice/configure
+vice/configure.ac
+vice/depcomp
+vice/missing
+vice/vice-mint-sdl.spec
+vice/ylwrap
+
+vice/src/c64/psiddrv.h
+vice/src/c64/psiddrv.o65
+vice/src/config.h
+vice/src/config.h.in
+vice/src/debug.h
+vice/src/infocontrib.h
+vice/src/monitor/mon_lex.c
+vice/src/monitor/mon_parse.c
+vice/src/monitor/mon_parse.h
+vice/src/stamp-h1
+
+# Build files - doc / man
+vice/doc/**/Makefile*
+vice/doc/texinfo.tex
+vice/doc/vice.chm
+vice/doc/vice.guide
+vice/doc/vice.hlp
+vice/doc/vice.inf
+vice/doc/vice.info
+vice/doc/vice.pdf
+vice/doc/vice.txt
+vice/doc/html/vice*.html
+vice/doc/html/COPYING
+vice/doc/html/NEWS
+
+# Build files - resid
+vice/src/resid/wave6581*.h
+vice/src/resid/wave8580*.h
+vice/src/resid*/COPYING
+vice/src/resid*/INSTALL
+vice/src/resid*/config.log
+vice/src/resid*/config.status
+vice/src/resid*/configure
+vice/src/resid*/sid*defs.h
+
+# Build files - arch
+vice/src/arch/gtk3/data/vice.gresource
+vice/src/arch/gtk3/data/vice.gresource.xml
+vice/src/arch/gtk3/novte/box_drawing.h
+vice/src/arch/gtk3/novte/marshal.cc
+vice/src/arch/gtk3/novte/marshal.h
+vice/src/arch/gtk3/novte/vtetypebuiltins.cc
+vice/src/arch/gtk3/novte/vtetypebuiltins.h
