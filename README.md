@@ -6,12 +6,20 @@ VICE IOI is a port of VICE, the Versatile Commodore Emulator 3.3.
 # Intended use
 This port provides additional interfaces for communicating with third-party applications.
 
+Supported OS: Windows 10
+
 In case your usage doesn't require these additional interfaces, you should use the original VICE or some other relevant port/emulator.
 
 Original VICE exists here -> https://vice-emu.sourceforge.io/
 
+# About bugs and feature requests
+This software is provided as is, it is still work in progress. It comes without guarantee of work, without warranty.
 
-# Original readme
+There is no active channel currently that receives problem reports related to this software.
+
+In case you do find issues, please do not contact VICE-team on issues related to VICE IOI. Verify first that the issue is VICE related by using original VICE, before reporting it.
+
+# Original VICE 3.3 readme
 
   VICE  3.3                                                        Dec 2018
 
