@@ -8,6 +8,8 @@ AM_CPPFLAGS = \
 noinst_LIBRARIES = libvideo.a
 
 libvideo_a_SOURCES = \
+	ioi-video-output.c \
+	ioi-video-output.h \
 	render1x1.c \
 	render1x1.h \
 	render1x1crt.c \

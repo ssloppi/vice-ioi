@@ -48,6 +48,7 @@
 #include "video-render.h"
 #include "video.h"
 #include "viewport.h"
+#include "ioi-video-output.h"
 
 
 /* Temporary! */
@@ -58,6 +59,7 @@
 /* called from raster/raster-resources.c:raster_resources_chip_init */
 video_canvas_t *video_canvas_init(void)
 {
+    ioi_video_output_init();
     video_canvas_t *canvas;
 
     canvas = lib_calloc(1, sizeof(video_canvas_t));
@@ -76,6 +78,8 @@ video_canvas_t *video_canvas_init(void)
 
 void video_canvas_shutdown(video_canvas_t *canvas)
 {
+    ioi_video_output_close();
+
     if (canvas != NULL) {
         lib_free(canvas->videoconfig);
         lib_free(canvas->draw_buffer);
@@ -110,6 +114,8 @@ void video_canvas_render(video_canvas_t *canvas, uint8_t *trg, int width,
                       trg, width, height, xs, ys, xt, yt,
                       canvas->draw_buffer->draw_buffer_width, pitcht, depth,
                       viewport);
+
+    ioi_video_output_update(trg, pitcht);
 }
 
 void video_canvas_refresh_all(video_canvas_t *canvas)
