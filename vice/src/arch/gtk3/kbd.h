@@ -63,4 +63,14 @@ void kbd_hotkey_shutdown(void);
 gboolean kbd_hotkey_add(guint code, guint mask, void (*callback)(void));
 gboolean kbd_hotkey_add_list(kbd_gtk3_hotkey_t *list);
 
+typedef struct {
+    int keycode;
+    int press;
+    int release;
+} iq_key_t;
+
+iq_key_t ioi_input_queue_poll(void);
+void ioi_input_queue_init(void);
+void ioi_input_queue_shutdown(void);
+
 #endif

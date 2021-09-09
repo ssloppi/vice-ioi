@@ -1305,6 +1305,7 @@ int ui_init(int *argc, char **argv)
     gtk_init(argc, &argv);
 
     kbd_hotkey_init();
+    ioi_input_queue_init();
 
     if (!uidata_init()) {
         log_error(LOG_ERR,
@@ -1699,6 +1700,7 @@ void ui_exit(void)
 
     /* deallocate memory used by the unconnected keyboard shortcuts */
     kbd_hotkey_shutdown();
+    ioi_input_queue_shutdown();
 
     /* trigger any remaining Gtk/GLib events */
     while (g_main_context_pending(g_main_context_default())) {
