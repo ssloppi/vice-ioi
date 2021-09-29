@@ -1779,6 +1779,13 @@ int ui_init(void)
      */
     settings_default = gtk_settings_get_default();
     g_object_set(settings_default, "gtk-menu-bar-accel", "F20", NULL);
+#if 0
+    INCOMPLETE_IMPLEMENTATION();
+#endif
+    gtk_init(argc, &argv);
+
+    kbd_hotkey_init();
+    ioi_input_queue_init();
 
     if (!uidata_init()) {
         log_error(LOG_ERR,
@@ -2219,6 +2226,7 @@ void ui_exit(void)
     archdep_unregister_cbmfont();
 
     mainlock_release();
+    ioi_input_queue_shutdown();
 }
 
 /** \brief  Send current light pen state to the emulator core for all windows
