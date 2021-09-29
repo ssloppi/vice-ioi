@@ -25,6 +25,8 @@
  *
  */
 
+#define DEBUGDRIVE
+
 #include "vice.h"
 
 #include <stdio.h>
@@ -36,14 +38,14 @@
 #include "machine.h"
 #include "machine-drive.h"
 
+#ifdef DEBUGDRIVE
+#define DBG(x)  printf x
+#else
+#define DBG(x)
+#endif
+
 static const cmdline_option_t cmdline_options[] =
 {
-    { "-truedrive", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
-      NULL, NULL, "DriveTrueEmulation", (void *)1,
-      NULL, "Enable hardware-level emulation of disk drives" },
-    { "+truedrive", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
-      NULL, NULL, "DriveTrueEmulation", (void *)0,
-      NULL, "Disable hardware-level emulation of disk drives" },
     { "-drivesound", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, "DriveSoundEmulation", (void *)1,
       NULL, "Enable sound emulation of disk drives" },
@@ -72,7 +74,16 @@ static cmdline_option_t cmd_drive[] =
       "<RPM>", "Set drive rpm (30000 = 300rpm)" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
       NULL, NULL, NULL, NULL,
-      "<Wobble>", "Set drive wobble (100 = +/-0.5rpm)" },
+      "<Frequency>", "Set drive wobble frequency" },
+    { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
+      NULL, NULL, NULL, NULL,
+      "<Amplitude>", "Set drive wobble amplitude" },
+    { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
+      NULL, NULL, NULL, (void *)1,
+      NULL, "Enable hardware-level emulation of disk drive" },
+    { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
+      NULL, NULL, NULL, (void *)0,
+      NULL, "Disable hardware-level emulation of disk drive" },
     CMDLINE_LIST_END
 };
 
@@ -98,11 +109,11 @@ typedef struct machine_drives_s {
 #define DRIVES_C64    4
 
 static char *drives[] = {
-    "Set drive type (0: no drive, 2031: CBM 2031, 2040: CBM 2040, 3040: CBM 3040, 4040: CBM 4040, 1001: CBM 1001, 8050: CBM 8050, 8250: CBM 8250)",
-    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1551: CBM 1551, 1570: CBM 1570, 1571: CBM 1571, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000)",
-    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1570: CBM 1570, 1571: CBM 1571, 1573: CBM 1571CR, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000, 2031: CBM 2031, 2040: CBM 2040, 3040: CBM 3040, 4040: CBM 4040, 1001: CBM 1001, 8050: CBM 8050, 8250: CBM 8250)",
-    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1570: CBM 1570, 1571: CBM 1571, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000)",
-    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1570: CBM 1570, 1571: CBM 1571, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000, 2031: CBM 2031, 2040: CBM 2040, 3040: CBM 3040, 4040: CBM 4040, 1001: CBM 1001, 8050: CBM 8050, 8250: CBM 8250)"
+    "Set drive type (0: no drive, 2031: CBM 2031, 2040: CBM 2040, 3040: CBM 3040, 4040: CBM 4040, 1001: CBM 1001, 8050: CBM 8050, 8250: CBM 8250, 9000: CBM D9090/60)",
+    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1551: CBM 1551, 1570: CBM 1570, 1571: CBM 1571, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000, 4844: CMD HD)",
+    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1570: CBM 1570, 1571: CBM 1571, 1573: CBM 1571CR, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000, 4844: CMD HD, 2031: CBM 2031, 2040: CBM 2040, 3040: CBM 3040, 4040: CBM 4040, 1001: CBM 1001, 8050: CBM 8050, 8250: CBM 8250, 9000: CBM D9090/60)",
+    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1570: CBM 1570, 1571: CBM 1571, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000, 4844: CMD HD)",
+    "Set drive type (0: no drive, 1540: CBM 1540, 1541: CBM 1541, 1542: CBM 1541-II, 1570: CBM 1570, 1571: CBM 1571, 1581: CBM 1581, 2000: CMD FD-2000, 4000: CMD FD-4000, 4844: CMD HD, 2031: CBM 2031, 2040: CBM 2040, 3040: CBM 3040, 4040: CBM 4040, 1001: CBM 1001, 8050: CBM 8050, 8250: CBM 8250, 9000: CBM D9090/D9060)"
 };
 
 static machine_drives_t machine_drives[] = {
@@ -127,7 +138,6 @@ int drive_cmdline_options_init(void)
     int has_iec;
 
     switch (machine_class) {
-        case VICE_MACHINE_NONE:
         case VICE_MACHINE_PET:
         case VICE_MACHINE_CBM5x0:
         case VICE_MACHINE_CBM6x0:
@@ -138,7 +148,7 @@ int drive_cmdline_options_init(void)
             has_iec = 1;
     }
 
-    for (dnr = 0; dnr < DRIVE_NUM; dnr++) {
+    for (dnr = 0; dnr < NUM_DISK_UNITS; dnr++) {
         cmd_drive[0].name = lib_msprintf("-drive%itype", dnr + 8);
         cmd_drive[0].resource_name = lib_msprintf("Drive%iType", dnr + 8);
         for (j = 0; machine_drives[j].machine != 0; j++) {
@@ -160,9 +170,18 @@ int drive_cmdline_options_init(void)
         cmd_drive[3].name = lib_msprintf("-drive%irpm", dnr + 8);
         cmd_drive[3].resource_name
             = lib_msprintf("Drive%iRPM", dnr + 8);
-        cmd_drive[4].name = lib_msprintf("-drive%iwobble", dnr + 8);
+        cmd_drive[4].name = lib_msprintf("-drive%iwobblefrequency", dnr + 8);
         cmd_drive[4].resource_name
-            = lib_msprintf("Drive%iWobble", dnr + 8);
+            = lib_msprintf("Drive%iWobbleFrequency", dnr + 8);
+        cmd_drive[5].name = lib_msprintf("-drive%iwobbleamplitude", dnr + 8);
+        cmd_drive[5].resource_name
+            = lib_msprintf("Drive%iWobbleAmplitude", dnr + 8);
+        cmd_drive[6].name = lib_msprintf("-drive%itruedrive", dnr + 8);
+        cmd_drive[6].resource_name
+            = lib_msprintf("Drive%iTrueEmulation", dnr + 8);
+        cmd_drive[7].name = lib_msprintf("+drive%itruedrive", dnr + 8);
+        cmd_drive[7].resource_name
+            = lib_msprintf("Drive%iTrueEmulation", dnr + 8);
 
         if (has_iec) {
             cmd_drive_rtc[0].name = lib_msprintf("-drive%irtcsave", dnr + 8);
@@ -179,7 +198,7 @@ int drive_cmdline_options_init(void)
             return -1;
         }
 
-        for (i = 0; i < 5; i++) {
+        for (i = 0; i < 8; i++) {
             lib_free(cmd_drive[i].name);
             lib_free(cmd_drive[i].resource_name);
         }

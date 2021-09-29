@@ -640,7 +640,7 @@ UI_MENU_DEFINE_FILE_STRING(VICPaletteFile)
 
 
 /* C128 video menu */
-
+#ifndef USE_SDLUI2
 static UI_MENU_CALLBACK(radio_VideoOutput_c128_callback)
 {
     int value = vice_ptr_to_int(param);
@@ -654,6 +654,35 @@ static UI_MENU_CALLBACK(radio_VideoOutput_c128_callback)
     }
     return NULL;
 }
+#else
+static UI_MENU_CALLBACK(radio_VideoOutput_c128_callback)
+{
+    int value = vice_ptr_to_int(param);
+    int dual_window = 0;
+
+    resources_get_int("SDL2DualWindow", &dual_window);
+
+    if (activated) {
+        if (value < 2) {
+            sdl_video_canvas_switch(value);
+            resources_set_int("SDL2DualWindow", 0);
+            sdl2_hide_second_window();
+        } else if (value == 2) {
+            resources_set_int("SDL2DualWindow", 1);
+            sdl2_show_second_window();
+        }
+    } else {
+        if ((value == 2) && (dual_window == 1)) {
+            return sdl_menu_text_tick;
+        } else if (dual_window != 1) {
+            if (value == sdl_active_canvas->index) {
+                return sdl_menu_text_tick;
+            }
+        }
+    }
+    return NULL;
+}
+#endif /* USE_SDLUI2 */
 
 const ui_menu_entry_t c128_video_menu[] = {
     SDL_MENU_ITEM_TITLE("Video output"),
@@ -665,6 +694,12 @@ const ui_menu_entry_t c128_video_menu[] = {
       MENU_ENTRY_RESOURCE_RADIO,
       radio_VideoOutput_c128_callback,
       (ui_callback_data_t)1 },
+#ifdef USE_SDLUI2
+    { "Dual Windows",
+      MENU_ENTRY_RESOURCE_RADIO,
+      radio_VideoOutput_c128_callback,
+      (ui_callback_data_t)2 },
+#endif
     SDL_MENU_ITEM_SEPARATOR,
     { "VICII size settings",
       MENU_ENTRY_SUBMENU,
@@ -1243,7 +1278,7 @@ static UI_MENU_CALLBACK(external_palette_file2_callback)
     return NULL;
 }
 
-static int countgroup(palette_info_t *palettelist, char *chip)
+static int countgroup(const palette_info_t *palettelist, char *chip)
 {
     int num = 0;
 
@@ -1257,12 +1292,12 @@ static int countgroup(palette_info_t *palettelist, char *chip)
 }
 
 typedef struct name2func_s {
-    char *name;
+    const char *name;
     const char *(*toggle_func)(int activated, ui_callback_data_t param);
     const char *(*file_func)(int activated, ui_callback_data_t param);
 } name2func_t;
 
-static name2func_t name2func[] = {
+static const name2func_t name2func[] = {
     { "VICII", toggle_VICIIExternalPalette_callback, file_string_VICIIPaletteFile_callback },
     { "VDC", toggle_VDCExternalPalette_callback, file_string_VDCPaletteFile_callback },
     { "Crtc", toggle_CrtcExternalPalette_callback, file_string_CrtcPaletteFile_callback },
@@ -1274,7 +1309,7 @@ static name2func_t name2func[] = {
 void uipalette_menu_create(char *chip1_name, char *chip2_name)
 {
     int num;
-    palette_info_t *palettelist = palette_get_info_list();
+    const palette_info_t *palettelist = palette_get_info_list();
     int i;
     const char *(*toggle_func1)(int activated, ui_callback_data_t param) = NULL;
     const char *(*file_func1)(int activated, ui_callback_data_t param) = NULL;
@@ -1308,10 +1343,10 @@ void uipalette_menu_create(char *chip1_name, char *chip2_name)
 
     while (palettelist->name) {
         if (palettelist->chip && !strcmp(palettelist->chip, video_chip1_used)) {
-            palette_dyn_menu1[i].string = (char *)lib_stralloc(palettelist->name);
+            palette_dyn_menu1[i].string = (char *)lib_strdup(palettelist->name);
             palette_dyn_menu1[i].type = MENU_ENTRY_OTHER_TOGGLE;
             palette_dyn_menu1[i].callback = external_palette_file1_callback;
-            palette_dyn_menu1[i].data = (ui_callback_data_t)lib_stralloc(palettelist->file);
+            palette_dyn_menu1[i].data = (ui_callback_data_t)lib_strdup(palettelist->file);
             ++i;
         }
         ++palettelist;
@@ -1331,10 +1366,10 @@ void uipalette_menu_create(char *chip1_name, char *chip2_name)
 
         while (palettelist->name) {
             if (palettelist->chip && !strcmp(palettelist->chip, video_chip2_used)) {
-                palette_dyn_menu2[i].string = (char *)lib_stralloc(palettelist->name);
+                palette_dyn_menu2[i].string = (char *)lib_strdup(palettelist->name);
                 palette_dyn_menu2[i].type = MENU_ENTRY_OTHER_TOGGLE;
                 palette_dyn_menu2[i].callback = external_palette_file2_callback;
-                palette_dyn_menu2[i].data = (ui_callback_data_t)lib_stralloc(palettelist->file);
+                palette_dyn_menu2[i].data = (ui_callback_data_t)lib_strdup(palettelist->file);
                 ++i;
             }
             ++palettelist;

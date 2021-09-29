@@ -1,11 +1,10 @@
 /** \file   settings_misc.c
  * \brief   Widget to control resources that are hard to place properly
  *
+ * Currently doesn't contain a single widget, which is nice. Keeping this around
+ * for future hard-to-place widgets. In the end this should go.
+ *
  * \author  Bas Wassink <b.wassink@ziggo.nl>
- */
-
-/*
- * $VICERES VirtualDevices      -vsid
  */
 
 /*
@@ -30,15 +29,8 @@
  */
 
 #include "vice.h"
-
 #include <gtk/gtk.h>
-
 #include "vice_gtk3.h"
-#include "resources.h"
-#include "machine.h"
-
-#include "cwdwidget.h"
-#include "jamactionwidget.h"
 
 #include "settings_misc.h"
 
@@ -46,34 +38,26 @@
 /** \brief  Create miscellaneous settings widget
  *
  * Basically a widget to contain (hopefully temporarily) widgets controlling
- * resources that can't (yet) be placed in a more logical location
+ * resources that can't (yet) be placed in a more logical location.
  *
- * \param[in]   widget  parent widget (used for dialogs)
+ * \param[in]   widget  parent widget (unused)
  *
  * \return  GtkGrid
  */
 GtkWidget *settings_misc_widget_create(GtkWidget *widget)
 {
     GtkWidget *grid;
-    GtkWidget *cwd_widget = NULL;
-    GtkWidget *vdev_widget = NULL;
-    GtkWidget *jam_widget = jam_action_widget_create();
+    GtkWidget *label;
 
-    grid = gtk_grid_new();
+    grid = vice_gtk3_grid_new_spaced(VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT);
 
-    if (machine_class != VICE_MACHINE_VSID) {
-        vdev_widget = vice_gtk3_resource_check_button_new(
-                "VirtualDevices",
-                "Enable virtual devices");
-        cwd_widget = cwd_widget_create();
-
-        gtk_grid_attach(GTK_GRID(grid), cwd_widget, 0, 1, 1, 1);
-        g_object_set(vdev_widget, "margin-left",8, NULL);
-        gtk_grid_attach(GTK_GRID(grid), vdev_widget, 0, 2, 1, 1);
-        gtk_grid_attach(GTK_GRID(grid), jam_widget, 0, 3, 1, 1);
-    } else {
-         gtk_grid_attach(GTK_GRID(grid), jam_widget, 0, 0, 1, 1);
-    }
+    label = gtk_label_new(NULL);
+    gtk_label_set_line_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_markup(GTK_LABEL(label),
+            "Placeholder for settings where we can't think of a better place.\n\n"
+            "Ideally this is empty, but it can <b>temporarily</b> be used to store "
+            "some widgets until we figure out a proper place.");
+    gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
 
     gtk_widget_show_all(grid);
     return grid;

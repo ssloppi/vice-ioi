@@ -33,7 +33,7 @@
 #include "6510core.h"
 #include "alarm.h"
 #include "archdep.h"
-#include "clkguard.h"
+#include "autostart.h"
 #include "debug.h"
 #include "interrupt.h"
 #include "machine.h"
@@ -112,10 +112,22 @@ static void memmap_mem_store(unsigned int addr, unsigned int value)
     (*_mem_write_tab_ptr[(addr) >> 8])((uint16_t)(addr), (uint8_t)(value));
 }
 
+static void memmap_mem_store_dummy(unsigned int addr, unsigned int value)
+{
+    memmap_mem_update(addr, 1);
+    (*_mem_write_tab_ptr_dummy[(addr) >> 8])((uint16_t)(addr), (uint8_t)(value));
+}
+
 static uint8_t memmap_mem_read(unsigned int addr)
 {
     memmap_mem_update(addr, 0);
     return (*_mem_read_tab_ptr[(addr) >> 8])((uint16_t)(addr));
+}
+
+static uint8_t memmap_mem_read_dummy(unsigned int addr)
+{
+    memmap_mem_update(addr, 0);
+    return (*_mem_read_tab_ptr_dummy[(addr) >> 8])((uint16_t)(addr));
 }
 
 #ifndef STORE
@@ -123,19 +135,51 @@ static uint8_t memmap_mem_read(unsigned int addr)
     memmap_mem_store(addr, value)
 #endif
 
+#ifndef STORE_DUMMY
+#define STORE_DUMMY(addr, value) \
+    memmap_mem_store_dummy(addr, value)
+#endif
+
 #ifndef LOAD
 #define LOAD(addr) \
     memmap_mem_read(addr)
 #endif
+
+#ifndef LOAD_DUMMY
+#define LOAD_DUMMY(addr) \
+    memmap_mem_read_dummy(addr)
+#endif
+    
+/* FIXME: vic20 does not really need BA */
+#ifndef LOAD_CHECK_BA_LOW
+#define LOAD_CHECK_BA_LOW(addr) \
+    memmap_mem_read(addr)
+#endif
+
+/* FIXME: vic20 does not really need BA */
+#ifndef LOAD_CHECK_BA_LOW_DUMMY
+#define LOAD_CHECK_BA_LOW_DUMMY(addr) \
+    memmap_mem_read_dummy(addr)
+#endif    
 
 #ifndef STORE_ZERO
 #define STORE_ZERO(addr, value) \
     memmap_mem_store((addr) & 0xff, value)
 #endif
 
+#ifndef STORE_ZERO_DUMMY
+#define STORE_ZERO_DUMMY(addr, value) \
+    memmap_mem_store_dummy((addr) & 0xff, value)
+#endif
+
 #ifndef LOAD_ZERO
 #define LOAD_ZERO(addr) \
     memmap_mem_read((addr) & 0xff)
+#endif
+
+#ifndef LOAD_ZERO_DUMMY
+#define LOAD_ZERO_DUMMY(addr) \
+    memmap_mem_read_dummy((addr) & 0xff)
 #endif
 
 #endif /* FEATURE_CPUMEMHISTORY */
@@ -145,14 +189,31 @@ static uint8_t memmap_mem_read(unsigned int addr)
     (*_mem_write_tab_ptr[(addr) >> 8])((uint16_t)(addr), (uint8_t)(value))
 #endif
 
+#ifndef STORE_DUMMY
+#define STORE_DUMMY(addr, value) \
+    (*_mem_write_tab_ptr_dummy[(addr) >> 8])((uint16_t)(addr), (uint8_t)(value))
+#endif
+    
 #ifndef LOAD
 #define LOAD(addr) \
     (*_mem_read_tab_ptr[(addr) >> 8])((uint16_t)(addr))
 #endif
 
+#ifndef LOAD_DUMMY
+#define LOAD_DUMMY(addr) \
+    (*_mem_read_tab_ptr_dummy[(addr) >> 8])((uint16_t)(addr))
+#endif
+
+/* FIXME: vic20 does not really need BA */
 #ifndef LOAD_CHECK_BA_LOW
 #define LOAD_CHECK_BA_LOW(addr) \
     (*_mem_read_tab_ptr[(addr) >> 8])((uint16_t)(addr))
+#endif
+
+/* FIXME: vic20 does not really need BA */
+#ifndef LOAD_CHECK_BA_LOW_DUMMY
+#define LOAD_CHECK_BA_LOW_DUMMY(addr) \
+    (*_mem_read_tab_ptr_dummy[(addr) >> 8])((uint16_t)(addr))
 #endif
 
 #ifndef STORE_ZERO
@@ -160,9 +221,19 @@ static uint8_t memmap_mem_read(unsigned int addr)
     (*_mem_write_tab_ptr[0])((uint16_t)(addr), (uint8_t)(value))
 #endif
 
+#ifndef STORE_ZERO_DUMMY
+#define STORE_ZERO_DUMMY(addr, value) \
+    (*_mem_write_tab_ptr_dummy[0])((uint16_t)(addr), (uint8_t)(value))
+#endif
+
 #ifndef LOAD_ZERO
 #define LOAD_ZERO(addr) \
     (*_mem_read_tab_ptr[0])((uint16_t)(addr))
+#endif
+
+#ifndef LOAD_ZERO_DUMMY
+#define LOAD_ZERO_DUMMY(addr) \
+    (*_mem_read_tab_ptr_dummy[0])((uint16_t)(addr))
 #endif
 
 #ifndef DMA_FUNC
@@ -190,7 +261,6 @@ static void maincpu_generic_dma(void)
 
 struct interrupt_cpu_status_s *maincpu_int_status = NULL;
 alarm_context_t *maincpu_alarm_context = NULL;
-clk_guard_t *maincpu_clk_guard = NULL;
 monitor_interface_t *maincpu_monitor_interface = NULL;
 
 /* This flag is an obsolete optimization. It's always 0 for the VIC-20 CPU,
@@ -248,11 +318,19 @@ monitor_interface_t *maincpu_monitor_interface_get(void)
     maincpu_monitor_interface->clk = &maincpu_clk;
 
     maincpu_monitor_interface->current_bank = 0;
+    maincpu_monitor_interface->current_bank_index = 0;
+
     maincpu_monitor_interface->mem_bank_list = mem_bank_list;
+    maincpu_monitor_interface->mem_bank_list_nos = mem_bank_list_nos;
+
     maincpu_monitor_interface->mem_bank_from_name = mem_bank_from_name;
+    maincpu_monitor_interface->mem_bank_index_from_bank = mem_bank_index_from_bank;
+    maincpu_monitor_interface->mem_bank_flags_from_bank = mem_bank_flags_from_bank;
+
     maincpu_monitor_interface->mem_bank_read = mem_bank_read;
     maincpu_monitor_interface->mem_bank_peek = mem_bank_peek;
     maincpu_monitor_interface->mem_bank_write = mem_bank_write;
+    maincpu_monitor_interface->mem_bank_poke = mem_bank_poke;
 
     maincpu_monitor_interface->mem_ioreg_list_get = mem_ioreg_list_get;
 
@@ -373,14 +451,15 @@ inline static int interrupt_check_irq_delay(interrupt_cpu_status_t *cs,
 unsigned int reg_pc;
 #endif
 
-static uint8_t **o_bank_base;
-static int *o_bank_start;
-static int *o_bank_limit;
+static bool bank_base_ready = false;
+static uint8_t *bank_base;
+static int bank_start = 0;
+static int bank_limit = 0;
 
 void maincpu_resync_limits(void)
 {
-    if (o_bank_base) {
-        mem_mmu_translate(reg_pc, o_bank_base, o_bank_start, o_bank_limit);
+    if (bank_base_ready) {
+        mem_mmu_translate(reg_pc, &bank_base, &bank_start, &bank_limit);
     }
 }
 
@@ -399,13 +478,13 @@ void maincpu_mainloop(void)
     /* FIXME: this should really be uint16_t, but it breaks things (eg trap17.prg) */
     unsigned int reg_pc;
 #endif
-    uint8_t *bank_base;
-    int bank_start = 0;
-    int bank_limit = 0;
 
-    o_bank_base = &bank_base;
-    o_bank_start = &bank_start;
-    o_bank_limit = &bank_limit;
+    /*
+     * Enable maincpu_resync_limits functionality .. in the old code
+     * this is where the local stack var had its address copied to
+     * the global.
+     */
+    bank_base_ready = true;
 
     machine_trigger_reset(MACHINE_RESET_MODE_SOFT);
 
@@ -465,6 +544,8 @@ void maincpu_mainloop(void)
             log_error(LOG_DEFAULT, "cycle limit reached.");
             archdep_vice_exit(EXIT_FAILURE);
         }
+
+        autostart_advance();
 #if 0
         if (CLK > 246171754) {
             debug.maincpu_traceflg = 1;
@@ -531,7 +612,7 @@ unsigned int maincpu_get_sp(void) {
 
 static char snap_module_name[] = "MAINCPU";
 #define SNAP_MAJOR 1
-#define SNAP_MINOR 1
+#define SNAP_MINOR 2
 
 int maincpu_snapshot_write_module(snapshot_t *s)
 {
@@ -544,7 +625,7 @@ int maincpu_snapshot_write_module(snapshot_t *s)
     }
 
     if (0
-        || SMW_DW(m, maincpu_clk) < 0
+        || SMW_CLOCK(m, maincpu_clk) < 0
         || SMW_B(m, MOS6510_REGS_GET_A(&maincpu_regs)) < 0
         || SMW_B(m, MOS6510_REGS_GET_X(&maincpu_regs)) < 0
         || SMW_B(m, MOS6510_REGS_GET_Y(&maincpu_regs)) < 0
@@ -588,9 +669,8 @@ int maincpu_snapshot_read_module(snapshot_t *s)
        wrong number of cycles.  */
     maincpu_rmw_flag = 0;
 
-    /* XXX: Assumes `CLOCK' is the same size as a `DWORD'.  */
     if (0
-        || SMR_DW(m, &maincpu_clk) < 0
+        || SMR_CLOCK(m, &maincpu_clk) < 0
         || SMR_B(m, &a) < 0
         || SMR_B(m, &x) < 0
         || SMR_B(m, &y) < 0

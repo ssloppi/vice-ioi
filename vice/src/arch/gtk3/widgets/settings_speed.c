@@ -43,7 +43,6 @@
 #include "debug_gtk3.h"
 #include "resourcecheckbutton.h"
 #include "widgethelpers.h"
-#include "refreshratewidget.h"
 #include "speedwidget.h"
 
 #include "settings_speed.h"
@@ -58,18 +57,37 @@ static GtkWidget *checkbox_pause = NULL;
 static GtkWidget *checkbox_warp = NULL;
 
 
+/** \brief  Event handler for the 'Warp mode' checkbox
+ *
+ * \param[in]   widget  widget triggering the event
+ * \param[in]   data    data for the event (unused)
+ */
+static void warp_callback(GtkWidget *widget, gpointer data)
+{
+    int warp = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
+
+    if (warp) {
+        vsync_set_warp_mode(1);
+    } else {
+        vsync_set_warp_mode(0);
+    }
+}
+
 
 /** \brief  Event handler for the 'pause' checkbox
  *
- * \param[in]   widget      widget triggering the event
- * \param[in]   user_data   data for the event (unused)
+ * \param[in]   widget  widget triggering the event
+ * \param[in]   data    data for the event (unused)
  */
 static void pause_callback(GtkWidget *widget, gpointer data)
 {
     int pause = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
 
-    debug_gtk3("%spausing emulation.", pause ? "" : "un");
-    ui_pause_emulation(pause);
+    if (pause) {
+        ui_pause_enable();
+    } else {
+        ui_pause_disable();
+    }
 }
 
 
@@ -79,7 +97,17 @@ static void pause_callback(GtkWidget *widget, gpointer data)
  */
 static GtkWidget *create_warp_checkbox(void)
 {
-    return vice_gtk3_resource_check_button_new("WarpMode", "Warp mode");
+    GtkWidget *check;
+    int warp;
+
+    check = gtk_check_button_new_with_label("Warp mode");
+    warp = vsync_get_warp_mode() ? TRUE : FALSE;
+    /* set widget state before connecting the event handler, otherwise the
+     * event handler triggers an un-pause */
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), warp);
+    g_signal_connect(check, "toggled", G_CALLBACK(warp_callback), NULL);
+    gtk_widget_show(check);
+    return check;
 }
 
 
@@ -93,7 +121,7 @@ static GtkWidget *create_pause_checkbox(void)
     int paused;
 
     check = gtk_check_button_new_with_label("Pause emulation");
-    paused = ui_emulation_is_paused() ? TRUE : FALSE;
+    paused = ui_pause_active() ? TRUE : FALSE;
     /* set widget state before connecting the event handler, otherwise the
      * event handler triggers an un-pause */
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check), paused);
@@ -110,6 +138,8 @@ static GtkWidget *create_pause_checkbox(void)
  * rate and warp/pause settings. To be used as the 'central widget' of the
  * settings dialog.
  *
+ * \param[in]   widget  parent widget (unused)
+ *
  * \return  speed settings widget
  *
  * \todo    Add 'advance frame' button
@@ -124,7 +154,6 @@ GtkWidget *settings_speed_widget_create(GtkWidget *widget)
 
     /* create layout */
     if (machine_class != VICE_MACHINE_VSID) {
-        gtk_grid_attach(GTK_GRID(layout), refreshrate_widget_create(), 0, 0, 1, 3);
         gtk_grid_attach(GTK_GRID(layout), speed_widget_create(), 1, 0, 1, 1);
         gtk_grid_attach(GTK_GRID(layout), checkbox_warp, 1, 1, 1, 1);
         gtk_grid_attach(GTK_GRID(layout), checkbox_pause, 1, 2, 1, 1);

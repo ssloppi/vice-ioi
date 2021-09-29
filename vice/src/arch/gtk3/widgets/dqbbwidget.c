@@ -1,8 +1,7 @@
 /** \file   dqbbwidget.c
  * \brief   Widget to control Double Quick Brown Box resources
  *
- * Written by
- *  Bas Wassink <b.wassink@ziggo.nl>
+ * \author  Bas Wassink <b.wassink@ziggo.nl>
  */
 
 /*
@@ -35,22 +34,24 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
-#include "machine.h"
-#include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
 #include "basedialogs.h"
-#include "openfiledialog.h"
-#include "savefiledialog.h"
+#include "basewidgets.h"
+#include "carthelpers.h"
 #include "cartimagewidget.h"
 #include "cartridge.h"
-#include "carthelpers.h"
+#include "debug_gtk3.h"
+#include "machine.h"
+#include "openfiledialog.h"
+#include "resources.h"
+#include "savefiledialog.h"
+#include "widgethelpers.h"
 
 #include "dqbbwidget.h"
 
 
 /** \brief  Create widget to load/save Double Quick Brown Box image file
+ *
+ * \param[in]   parent  parent widget
  *
  * \return  GtkGrid
  */
@@ -59,6 +60,7 @@ static GtkWidget *create_dqbb_image_widget(GtkWidget *parent)
     return cart_image_widget_create(parent, "DQBB image",
             "DQBBfilename", "DQBBImageWrite",
             carthelpers_save_func, carthelpers_flush_func,
+            carthelpers_can_save_func, carthelpers_can_flush_func,
             CARTRIDGE_NAME_DQBB, CARTRIDGE_DQBB);
 }
 
@@ -75,9 +77,7 @@ GtkWidget *dqbb_widget_create(GtkWidget *parent)
     GtkWidget *dqbb_enable_widget; /* dqbb_enable shadows */
     GtkWidget *dqbb_image;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 8);
 
     dqbb_enable_widget = carthelpers_create_enable_check_button(
             CARTRIDGE_NAME_DQBB, CARTRIDGE_DQBB);

@@ -33,7 +33,7 @@
 #include "6510core.h"
 #include "alarm.h"
 #include "archdep.h"
-#include "clkguard.h"
+#include "autostart.h"
 #include "debug.h"
 #include "interrupt.h"
 #include "log.h"
@@ -115,7 +115,6 @@ struct interrupt_cpu_status_s *maincpu_int_status = NULL;
 #ifndef CYCLE_EXACT_ALARM
 alarm_context_t *maincpu_alarm_context = NULL;
 #endif
-clk_guard_t *maincpu_clk_guard = NULL;
 monitor_interface_t *maincpu_monitor_interface = NULL;
 
 /* This flag is an obsolete optimization. It's always 0 for the 65816 CPU,
@@ -157,11 +156,19 @@ monitor_interface_t *maincpu_monitor_interface_get(void)
     maincpu_monitor_interface->clk = &maincpu_clk;
 
     maincpu_monitor_interface->current_bank = 0;
+    maincpu_monitor_interface->current_bank_index = 0;
+
     maincpu_monitor_interface->mem_bank_list = mem_bank_list;
+    maincpu_monitor_interface->mem_bank_list_nos = mem_bank_list_nos;
+
     maincpu_monitor_interface->mem_bank_from_name = mem_bank_from_name;
+    maincpu_monitor_interface->mem_bank_index_from_bank = mem_bank_index_from_bank;
+    maincpu_monitor_interface->mem_bank_flags_from_bank = mem_bank_flags_from_bank;
+
     maincpu_monitor_interface->mem_bank_read = mem_bank_read;
     maincpu_monitor_interface->mem_bank_peek = mem_bank_peek;
     maincpu_monitor_interface->mem_bank_write = mem_bank_write;
+    maincpu_monitor_interface->mem_bank_poke = mem_bank_poke;
 
     maincpu_monitor_interface->mem_ioreg_list_get = mem_ioreg_list_get;
 
@@ -226,14 +233,16 @@ void maincpu_reset(void)
 unsigned int reg_pc;
 #endif
 
-static uint8_t **o_bank_base;
-static int *o_bank_start;
-static int *o_bank_limit;
-static uint8_t *o_bank_bank;
+static bool bank_base_ready = false;
+static uint8_t *bank_base = NULL;
+static int bank_start = 0;
+static int bank_limit = 0;
+static uint8_t bank_bank = 0;
 
-void maincpu_resync_limits(void) {
-    if (o_bank_base) {
-        mem_mmu_translate(reg_pc | (*o_bank_bank << 16), o_bank_base, o_bank_start, o_bank_limit);
+void maincpu_resync_limits(void)
+{
+    if (bank_base_ready) {
+        mem_mmu_translate(reg_pc | (bank_bank << 16), &bank_base, &bank_start, &bank_limit);
     }
 }
 
@@ -269,16 +278,14 @@ void maincpu_mainloop(void)
 #ifndef NEED_REG_PC
     unsigned int reg_pc;
 #endif
-    uint8_t *bank_base;
-    int bank_start = 0;
-    int bank_limit = 0;
-    uint8_t bank_bank = 0;
-
-    o_bank_base = &bank_base;
-    o_bank_start = &bank_start;
-    o_bank_limit = &bank_limit;
-    o_bank_bank = &bank_bank;
-
+    
+    /*
+     * Enable maincpu_resync_limits functionality .. in the old code
+     * this is where the local stack var had its address copied to
+     * the global.
+     */
+    bank_base_ready = true;
+    
     reg_c = 0;
 
     machine_trigger_reset(MACHINE_RESET_MODE_SOFT);
@@ -347,6 +354,8 @@ void maincpu_mainloop(void)
             log_error(LOG_DEFAULT, "cycle limit reached.");
             archdep_vice_exit(EXIT_FAILURE);
         }
+
+        autostart_advance();
 #if 0
         if (CLK > 246171754)
             debug.maincpu_traceflg = 1;
@@ -412,7 +421,7 @@ unsigned int maincpu_get_sp(void) {
 
 static char snap_module_name[] = "MAIN6565802CPU";
 #define SNAP_MAJOR 1
-#define SNAP_MINOR 1
+#define SNAP_MINOR 2
 
 int maincpu_snapshot_write_module(snapshot_t *s)
 {
@@ -424,7 +433,7 @@ int maincpu_snapshot_write_module(snapshot_t *s)
         return -1;
 
     if (0
-        || SMW_DW(m, maincpu_clk) < 0
+        || SMW_CLOCK(m, maincpu_clk) < 0
         || SMW_B(m, (uint8_t)WDC65816_REGS_GET_A(&maincpu_regs)) < 0
         || SMW_B(m, (uint8_t)WDC65816_REGS_GET_B(&maincpu_regs)) < 0
         || SMW_W(m, (uint16_t)WDC65816_REGS_GET_X(&maincpu_regs)) < 0
@@ -470,7 +479,7 @@ int maincpu_snapshot_read_module(snapshot_t *s)
 
     /* XXX: Assumes `CLOCK' is the same size as a `DWORD'.  */
     if (0
-        || SMR_DW(m, &maincpu_clk) < 0
+        || SMR_CLOCK(m, &maincpu_clk) < 0
         || SMR_B(m, &a) < 0
         || SMR_B(m, &b) < 0
         || SMR_W(m, &x) < 0

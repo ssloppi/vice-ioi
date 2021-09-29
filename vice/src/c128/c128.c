@@ -54,13 +54,14 @@
 #include "c64iec.h"
 #include "c64keyboard.h"
 #include "c64memrom.h"
+#include "c64parallel.h"
 #include "c64rsuser.h"
 #include "cardkey.h"
 #include "cartridge.h"
 #include "cia.h"
-#include "clkguard.h"
 #include "clockport-mp3at64.h"
 #include "datasette.h"
+#include "datasette-sound.h"
 #include "debug.h"
 #include "diskimage.h"
 #include "drive-cmdline-options.h"
@@ -74,6 +75,7 @@
 #include "functionrom.h"
 #include "gfxoutput.h"
 #include "imagecontents.h"
+#include "inception.h"
 #include "init.h"
 #include "joyport.h"
 #include "joystick.h"
@@ -88,13 +90,16 @@
 #include "maincpu.h"
 #include "mem.h"
 #include "monitor.h"
+#include "multijoy.h"
 #include "network.h"
+#include "ninja_snespad.h"
 #include "paperclip64.h"
 #include "parallel.h"
 #include "patchrom.h"
 #include "plus60k.h"
 #include "plus256k.h"
 #include "printer.h"
+#include "protopad.h"
 #include "rs232drv.h"
 #include "rsuser.h"
 #include "sampler.h"
@@ -106,14 +111,15 @@
 #include "sid-cmdline-options.h"
 #include "sid-resources.h"
 #include "sid.h"
-#include "snespad.h"
 #include "sound.h"
+#include "spaceballs.h"
 #include "tape.h"
 #include "tape_diag_586220_harness.h"
 #include "tapeport.h"
 #include "tapecart.h"
 #include "tpi.h"
 #include "traps.h"
+#include "trapthem_snespad.h"
 #include "types.h"
 #include "userport.h"
 #include "userport_4bit_sampler.h"
@@ -122,8 +128,10 @@
 #include "userport_diag_586220_harness.h"
 #include "userport_digimax.h"
 #include "userport_joystick.h"
+#include "userport_petscii_snespad.h"
 #include "userport_rtc_58321a.h"
 #include "userport_rtc_ds1307.h"
+#include "userport_superpad64.h"
 #include "vdc.h"
 #include "vdc-mem.h"
 #include "vice-event.h"
@@ -142,6 +150,10 @@
 #include "mouse.h"
 #endif
 
+#ifdef IO_SIMULATION
+#include "userport_io_sim.h"
+#include "joyport_io_sim.h"
+#endif
 
 /** \brief  Delay in seconds before pasting -keybuf argument into the buffer
  */
@@ -366,93 +378,105 @@ static machine_timing_t machine_timing;
 /* C128-specific I/O initialization. */
 
 static io_source_t vicii_d000_device = {
-    "VIC-IIe",
-    IO_DETACH_CART, /* dummy */
-    NULL,           /* dummy */
-    0xd000, 0xd0ff, 0x7f,
-    1, /* read is always valid */
-    vicii_store,
-    vicii_read,
-    vicii_peek,
-    vicii_dump,
-    0, /* dummy (not a cartridge) */
-    IO_PRIO_HIGH, /* priority, device and mirrors never involved in collisions */
-    0
+    "VIC-IIe",             /* name of the chip */
+    IO_DETACH_NEVER,       /* chip is never involved in collisions, so no detach */
+    IO_DETACH_NO_RESOURCE, /* does not use a resource for detach */
+    0xd000, 0xd0ff, 0x3f,  /* regs: $d000-$d03f, mirrors: $d040-$d0ff */
+    1,                     /* read is always valid */
+    vicii_store,           /* store function */
+    NULL,                  /* NO poke function */
+    vicii_read,            /* read function */
+    vicii_peek,            /* peek function */
+    vicii_dump,            /* chip state information dump function */
+    IO_CART_ID_NONE,       /* not a cartridge */
+    IO_PRIO_HIGH,          /* high priority, chip and mirrors never involved in collisions */
+    0,                     /* insertion order, gets filled in by the registration function */
+    IO_MIRROR_MASK         /* contains mirrors, defined by mask */
 };
 
 static io_source_t vicii_d100_device = {
-    "VIC-IIe $D100-$D1FF mirrors",
-    IO_DETACH_CART, /* dummy */
-    NULL,           /* dummy */
-    0xd100, 0xd1ff, 0x7f,
-    1, /* read is always valid */
-    vicii_store,
-    vicii_read,
-    vicii_peek,
-    vicii_dump,
-    0, /* dummy (not a cartridge) */
-    IO_PRIO_HIGH, /* priority, device and mirrors never involved in collisions */
-    0
+    "VIC-IIe $D100-$D1FF mirrors", /* name of the chip */
+    IO_DETACH_NEVER,               /* chip is never involved in collisions, so no detach */
+    IO_DETACH_NO_RESOURCE,         /* does not use a resource for detach */
+    0xd100, 0xd1ff, 0x3f,          /* mirrors of $d000-$d03f */
+    1,                             /* read is always valid */
+    vicii_store,                   /* store function */
+    NULL,                          /* NO poke function */
+    vicii_read,                    /* read function */
+    vicii_peek,                    /* peek function */
+    vicii_dump,                    /* chip state information dump function */
+    IO_CART_ID_NONE,               /* not a cartridge */
+    IO_PRIO_HIGH,                  /* high priority, mirrors never involved in collisions */
+    0,                             /* insertion order, gets filled in by the registration function */
+    IO_MIRROR_OTHER                /* this is a mirror of another registered device */
 };
 
 static io_source_t vicii_d200_device = {
-    "VIC-IIe $D200-$D2FF mirrors",
-    IO_DETACH_CART, /* dummy */
-    NULL,           /* dummy */
-    0xd200, 0xd2ff, 0x7f,
-    1, /* read is always valid */
-    vicii_store,
-    vicii_read,
-    vicii_peek,
-    vicii_dump,
-    0, /* dummy (not a cartridge) */
-    IO_PRIO_HIGH, /* priority, device and mirrors never involved in collisions */
-    0
+    "VIC-IIe $D200-$D2FF mirrors", /* name of the chip */
+    IO_DETACH_NEVER,               /* chip is never involved in collisions, so no detach */
+    IO_DETACH_NO_RESOURCE,         /* does not use a resource for detach */
+    0xd200, 0xd2ff, 0x3f,          /* mirrors of $d000-$d03f */
+    1,                             /* read is always valid */
+    vicii_store,                   /* store function */
+    NULL,                          /* NO poke function */
+    vicii_read,                    /* read function */
+    vicii_peek,                    /* peek function */
+    vicii_dump,                    /* chip state information dump function */
+    IO_CART_ID_NONE,               /* not a cartridge */
+    IO_PRIO_HIGH,                  /* high priority, mirrors never involved in collisions */
+    0,                             /* insertion order, gets filled in by the registration function */
+    IO_MIRROR_OTHER                /* this is a mirror of another registered device */
 };
 
 static io_source_t vicii_d300_device = {
-    "VIC-IIe $D300-$D3FF mirrors",
-    IO_DETACH_CART, /* dummy */
-    NULL,           /* dummy */
-    0xd300, 0xd3ff, 0x7f,
-    1, /* read is always valid */
-    vicii_store,
-    vicii_read,
-    vicii_peek,
-    vicii_dump,
-    0, /* dummy (not a cartridge) */
-    IO_PRIO_HIGH, /* priority, device and mirrors never involved in collisions */
-    0
+    "VIC-IIe $D300-$D3FF mirrors", /* name of the chip */
+    IO_DETACH_NEVER,               /* chip is never involved in collisions, so no detach */
+    IO_DETACH_NO_RESOURCE,         /* does not use a resource for detach */
+    0xd300, 0xd3ff, 0x3f,          /* mirrors of $d000-$d03f */
+    1,                             /* read is always valid */
+    vicii_store,                   /* store function */
+    NULL,                          /* NO poke function */
+    vicii_read,                    /* read function */
+    vicii_peek,                    /* peek function */
+    vicii_dump,                    /* chip state information dump function */
+    IO_CART_ID_NONE,               /* not a cartridge */
+    IO_PRIO_HIGH,                  /* high priority, mirrors never involved in collisions */
+    0,                             /* insertion order, gets filled in by the registration function */
+    IO_MIRROR_OTHER                /* this is a mirror of another registered device */
 };
 
 static io_source_t sid_d400_device = {
-    "SID",
-    IO_DETACH_CART, /* dummy */
-    NULL,           /* dummy */
-    0xd400, 0xd41f, 0x1f,
-    1, /* read is always valid */
-    sid_store,
-    sid_read,
-    sid_peek,
-    sid_dump,
-    0, /* dummy (not a cartridge) */
-    IO_PRIO_HIGH, /* priority, device and mirrors never involved in collisions */
-    0
+    "SID",                 /* name of the chip */
+    IO_DETACH_NEVER,       /* chip is never involved in collisions, so no detach */
+    IO_DETACH_NO_RESOURCE, /* does not use a resource for detach */
+    0xd400, 0xd41f, 0x1f,  /* main SID registers $d400-$d41f */
+    1,                     /* read is always valid */
+    sid_store,             /* store function */
+    NULL,                  /* NO poke function */
+    sid_read,              /* read function */
+    sid_peek,              /* peek function */
+    sid_dump,              /* chip state information dump function */
+    IO_CART_ID_NONE,       /* not a cartridge */
+    IO_PRIO_HIGH,          /* high priority, mirrors never involved in collisions */
+    0,                     /* insertion order, gets filled in by the registration function */
+    IO_MIRROR_NONE         /* this is not a mirror */
 };
 
 static io_source_t sid_d420_device = {
-    "SID mirrors",
-    IO_DETACH_CART, /* dummy */
-    NULL,           /* dummy */
-    0xd420, 0xd4ff, 0x1f,
-    1, /* read is always valid */
-    sid_store,
-    sid_read,
-    sid_peek,
-    sid_dump,
-    0, /* dummy (not a cartridge) */
-    IO_PRIO_LOW, /* low priority, device and mirrors never involved in collisions */
-    0
+    "SID mirrors",         /* name of the chip */
+    IO_DETACH_NEVER,       /* chip is never involved in collisions, so no detach */
+    IO_DETACH_NO_RESOURCE, /* does not use a resource for detach */
+    0xd420, 0xd4ff, 0x1f,  /* mirrors of $d400-$d41f */
+    1,                     /* read is always valid */
+    sid_store,             /* store function */
+    NULL,                  /* NO poke function */
+    sid_read,              /* read function */
+    sid_peek,              /* peek function */
+    sid_dump,              /* chip state information dump function */
+    IO_CART_ID_NONE,       /* not a cartridge */
+    IO_PRIO_LOW,           /* low priority, chip never involved in collisions, this is to allow additional SID chips in the same range */
+    0,                     /* insertion order, gets filled in by the registration function */
+    IO_MIRROR_OTHER        /* this is a mirror of another registered device */
 };
 
 static io_source_list_t *vicii_d000_list_item = NULL;
@@ -507,6 +531,8 @@ static joyport_port_props_t control_port_1 =
     "Control port 1",
     1,                  /* has a potentiometer connected to this port */
     1,                  /* has lightpen support on this port */
+    1,                  /* has joystick adapter on this port */
+    1,                  /* has output support on this port */
     1                   /* port is always active */
 };
 
@@ -515,22 +541,88 @@ static joyport_port_props_t control_port_2 =
     "Control port 2",
     1,                  /* has a potentiometer connected to this port */
     0,                  /* has NO lightpen support on this port */
+    1,                  /* has joystick adapter on this port */
+    1,                  /* has output support on this port */
     1                   /* port is always active */
 };
 
-static joyport_port_props_t userport_joy_control_port_1 =
+static joyport_port_props_t joy_adapter_control_port_1 =
 {
-    "Userport joystick adapter port 1",
+    "Joystick adapter port 1",
     0,                  /* has NO potentiometer connected to this port */
     0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
     0                   /* port can be switched on/off */
 };
 
-static joyport_port_props_t userport_joy_control_port_2 =
+static joyport_port_props_t joy_adapter_control_port_2 =
 {
-    "Userport joystick adapter port 2",
+    "Joystick adapter port 2",
     0,                  /* has NO potentiometer connected to this port */
     0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
+    0                   /* port can be switched on/off */
+};
+
+static joyport_port_props_t joy_adapter_control_port_3 =
+{
+    "Joystick adapter port 3",
+    0,                  /* has NO potentiometer connected to this port */
+    0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
+    0                   /* port can be switched on/off */
+};
+
+static joyport_port_props_t joy_adapter_control_port_4 =
+{
+    "Joystick adapter port 4",
+    0,                  /* has NO potentiometer connected to this port */
+    0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
+    0                   /* port can be switched on/off */
+};
+
+static joyport_port_props_t joy_adapter_control_port_5 =
+{
+    "Joystick adapter port 5",
+    0,                  /* has NO potentiometer connected to this port */
+    0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
+    0                   /* port can be switched on/off */
+};
+
+static joyport_port_props_t joy_adapter_control_port_6 =
+{
+    "Joystick adapter port 6",
+    0,                  /* has NO potentiometer connected to this port */
+    0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
+    0                   /* port can be switched on/off */
+};
+
+static joyport_port_props_t joy_adapter_control_port_7 =
+{
+    "Joystick adapter port 7",
+    0,                  /* has NO potentiometer connected to this port */
+    0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
+    0                   /* port can be switched on/off */
+};
+
+static joyport_port_props_t joy_adapter_control_port_8 =
+{
+    "Joystick adapter port 8",
+    0,                  /* has NO potentiometer connected to this port */
+    0,                  /* has NO lightpen support on this port */
+    0,                  /* has NO joystick adapter on this port */
+    1,                  /* has output support on this port */
     0                   /* port can be switched on/off */
 };
 
@@ -542,10 +634,28 @@ static int init_joyport_ports(void)
     if (joyport_port_register(JOYPORT_2, &control_port_2) < 0) {
         return -1;
     }
-    if (joyport_port_register(JOYPORT_3, &userport_joy_control_port_1) < 0) {
+    if (joyport_port_register(JOYPORT_3, &joy_adapter_control_port_1) < 0) {
         return -1;
     }
-    return joyport_port_register(JOYPORT_4, &userport_joy_control_port_2);
+    if (joyport_port_register(JOYPORT_4, &joy_adapter_control_port_2) < 0) {
+        return -1;
+    }
+    if (joyport_port_register(JOYPORT_5, &joy_adapter_control_port_3) < 0) {
+        return -1;
+    }
+    if (joyport_port_register(JOYPORT_6, &joy_adapter_control_port_4) < 0) {
+        return -1;
+    }
+    if (joyport_port_register(JOYPORT_7, &joy_adapter_control_port_5) < 0) {
+        return -1;
+    }
+    if (joyport_port_register(JOYPORT_8, &joy_adapter_control_port_6) < 0) {
+        return -1;
+    }
+    if (joyport_port_register(JOYPORT_9, &joy_adapter_control_port_7) < 0) {
+        return -1;
+    }
+    return joyport_port_register(JOYPORT_10, &joy_adapter_control_port_8);
 }
 
 /* C128-specific resource initialization.  This is called before initializing
@@ -582,6 +692,14 @@ int machine_resources_init(void)
     }
     if (rs232drv_resources_init() < 0) {
         init_resource_fail("rs232drv");
+        return -1;
+    }
+    if (userport_resources_init() < 0) {
+        init_resource_fail("userport devices");
+        return -1;
+    }
+    if (parallel_cable_cpu_resources_init() < 0) {
+        init_resource_fail("userport parallel drive cable");
         return -1;
     }
     if (rsuser_resources_init() < 0) {
@@ -636,16 +754,32 @@ int machine_resources_init(void)
         init_resource_fail("joyport waasoft dongle");
         return -1;
     }
-    if (joyport_snespad_resources_init() < 0) {
-        init_resource_fail("joyport snespad");
+    if (joyport_trapthem_snespad_resources_init() < 0) {
+        init_resource_fail("joyport trapthem snespad");
+        return -1;
+    }
+    if (joyport_ninja_snespad_resources_init() < 0) {
+        init_resource_fail("joyport ninja snespad");
+        return -1;
+    }
+    if (joyport_protopad_resources_init() < 0) {
+        init_resource_fail("joyport protopad");
+        return -1;
+    }
+    if (joyport_spaceballs_resources_init() < 0) {
+        init_resource_fail("joyport spaceballs");
+        return -1;
+    }
+    if (joyport_inception_resources_init() < 0) {
+        init_resource_fail("joyport inception");
+        return -1;
+    }
+    if (joyport_multijoy_resources_init() < 0) {
+        init_resource_fail("joyport multijoy");
         return -1;
     }
     if (joystick_resources_init() < 0) {
         init_resource_fail("joystick");
-        return -1;
-    }
-    if (userport_resources_init() < 0) {
-        init_resource_fail("userport devices");
         return -1;
     }
     if (gfxoutput_resources_init() < 0) {
@@ -709,10 +843,6 @@ int machine_resources_init(void)
         return -1;
     }
 #endif
-    if (drive_resources_init() < 0) {
-        init_resource_fail("drive");
-        return -1;
-    }
     /*
      * This needs to be called before tapeport_resources_init(), otherwise
      * the tapecart will fail to initialize due to the Datasette resource
@@ -726,10 +856,12 @@ int machine_resources_init(void)
         init_resource_fail("tapeport");
         return -1;
     }
+#ifdef TAPEPORT_EXPERIMENTAL_DEVICES
     if (tape_diag_586220_harness_resources_init() < 0) {
         init_resource_fail("tape diag 586220 harness");
         return -1;
     }
+#endif
     if (cartridge_resources_init() < 0) {
         init_resource_fail("cartridge");
         return -1;
@@ -738,8 +870,36 @@ int machine_resources_init(void)
         init_resource_fail("mmu");
         return -1;
     }
-    if (userport_joystick_resources_init() < 0) {
-        init_resource_fail("userport joystick");
+    if (userport_joystick_cga_resources_init() < 0) {
+        init_resource_fail("userport cga joystick");
+        return -1;
+    }
+    if (userport_joystick_pet_resources_init() < 0) {
+        init_resource_fail("userport pet joystick");
+        return -1;
+    }
+    if (userport_joystick_hummer_resources_init() < 0) {
+        init_resource_fail("userport hummer joystick");
+        return -1;
+    }
+    if (userport_joystick_oem_resources_init() < 0) {
+        init_resource_fail("userport oem joystick");
+        return -1;
+    }
+    if (userport_joystick_hit_resources_init() < 0) {
+        init_resource_fail("userport hit joystick");
+        return -1;
+    }
+    if (userport_joystick_kingsoft_resources_init() < 0) {
+        init_resource_fail("userport kingsoft joystick");
+        return -1;
+    }
+    if (userport_joystick_starbyte_resources_init() < 0) {
+        init_resource_fail("userport starbyte joystick");
+        return -1;
+    }
+    if (userport_joystick_synergy_resources_init() < 0) {
+        init_resource_fail("userport synergy joystick");
         return -1;
     }
     if (userport_dac_resources_init() < 0) {
@@ -766,16 +926,45 @@ int machine_resources_init(void)
         init_resource_fail("userport 8bit stereo sampler");
         return -1;
     }
+    if (userport_petscii_snespad_resources_init() < 0) {
+        init_resource_fail("userport petscii snes pad");
+        return -1;
+    }
+    if (userport_superpad64_resources_init() < 0) {
+        init_resource_fail("userport superpad64");
+        return -1;
+    }
+#ifdef USERPORT_EXPERIMENTAL_DEVICES
     if (userport_diag_586220_harness_resources_init() < 0) {
         init_resource_fail("userport diag 586220 harness");
         return -1;
     }
+#endif
+#ifdef IO_SIMULATION
+    if (userport_io_sim_resources_init() < 0) {
+        init_resource_fail("userport I/O simulation");
+        return -1;
+    }
+    if (joyport_io_sim_resources_init() < 0) {
+        init_resource_fail("joyport I/O simulation");
+        return -1;
+    }
+#endif
     if (cartio_resources_init() < 0) {
         init_resource_fail("cartio");
         return -1;
     }
     if (functionrom_resources_init() < 0) {
         init_resource_fail("functionrom");
+        return -1;
+    }
+    /* Must be called after initializing cartridge resources. Some carts provide
+     * additional busses.  The drive resources check the validity of the drive
+     * type against the available busses on the system.  So if you had e.g. an
+     * IEEE cart enabled and an IEEE defined, on startup the drive code would
+     * reset the drive type to the default for the IEC bus. */
+    if (drive_resources_init() < 0) {
+        init_resource_fail("drive");
         return -1;
     }
     return 0;
@@ -797,7 +986,6 @@ void machine_resources_shutdown(void)
     fsdevice_resources_shutdown();
     disk_image_resources_shutdown();
     sampler_resources_shutdown();
-    userport_resources_shutdown();
     joyport_bbrtc_resources_shutdown();
     tapeport_resources_shutdown();
     tapecart_exit();
@@ -924,10 +1112,12 @@ int machine_cmdline_options_init(void)
         init_cmdline_options_fail("tapeport");
         return -1;
     }
+#ifdef TAPEPORT_EXPERIMENTAL_DEVICES
     if (tape_diag_586220_harness_cmdline_options_init() < 0) {
         init_cmdline_options_fail("tape diag 586220 harness");
         return -1;
     }
+#endif
     if (datasette_cmdline_options_init() < 0) {
         init_cmdline_options_fail("datasette");
         return -1;
@@ -944,36 +1134,12 @@ int machine_cmdline_options_init(void)
         init_cmdline_options_fail("functionrom");
         return -1;
     }
-    if (userport_joystick_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport joystick");
-        return -1;
-    }
-    if (userport_dac_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport dac");
-        return -1;
-    }
-    if (userport_digimax_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport digimax");
-        return -1;
-    }
     if (userport_rtc_58321a_cmdline_options_init() < 0) {
         init_cmdline_options_fail("userport rtc (58321a)");
         return -1;
     }
     if (userport_rtc_ds1307_cmdline_options_init() < 0) {
         init_cmdline_options_fail("userport rtc (ds1307)");
-        return -1;
-    }
-    if (userport_4bit_sampler_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport 4bit sampler");
-        return -1;
-    }
-    if (userport_8bss_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport 8bit stereo sampler");
-        return -1;
-    }
-    if (userport_diag_586220_harness_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport diag 586220 harness");
         return -1;
     }
     if (cartio_cmdline_options_init() < 0) {
@@ -987,7 +1153,7 @@ static void c128_monitor_init(void)
 {
     unsigned int dnr;
     monitor_cpu_type_t asm6502, asmz80, asmR65C02;
-    monitor_interface_t *drive_interface_init[DRIVE_NUM];
+    monitor_interface_t *drive_interface_init[NUM_DISK_UNITS];
     monitor_cpu_type_t *asmarray[4];
 
     asmarray[0] = &asm6502;
@@ -999,7 +1165,7 @@ static void c128_monitor_init(void)
     asmz80_init(&asmz80);
     asmR65C02_init(&asmR65C02);
 
-    for (dnr = 0; dnr < DRIVE_NUM; dnr++) {
+    for (dnr = 0; dnr < NUM_DISK_UNITS; dnr++) {
         drive_interface_init[dnr] = drive_cpu_monitor_interface_get(dnr);
     }
 
@@ -1018,8 +1184,6 @@ void machine_setup_context(void)
 /* C128-specific initialization.  */
 int machine_specific_init(void)
 {
-    int delay;
-
     c128_log = log_open("C128");
 
     if (mem_load() < 0) {
@@ -1067,12 +1231,8 @@ int machine_specific_init(void)
 
     disk_image_init();
 
-    /* Initialize autostart. FIXME: at least 0xa26 is only for 40 cols */
-    resources_get_int("AutostartDelay", &delay);
-    if (delay == 0) {
-        delay = 3; /* default */
-    }
-    autostart_init((CLOCK)(delay * C128_PAL_RFSH_PER_SEC * C128_PAL_CYCLES_PER_RFSH), 1, 0xa27, 0xe0, 0xec, 0xee);
+    /* Initialize autostart. */
+    autostart_init(3, 1);
 
     /* Pre-init C128-specific parts of the menus before vdc_init() and
        vicii_init() create canvas windows with menubars at the top. */
@@ -1116,11 +1276,13 @@ int machine_specific_init(void)
 #endif
 
     drive_sound_init();
+    datasette_sound_init();
     video_sound_init();
 
     /* Initialize sound.  Notice that this does not really open the audio
        device yet.  */
-    sound_init(machine_timing.cycles_per_sec, machine_timing.cycles_per_rfsh);
+    sound_init((unsigned int)machine_timing.cycles_per_sec,
+               (unsigned int)machine_timing.cycles_per_rfsh);
     fmopl_set_machine_parameter(machine_timing.cycles_per_sec);
 
     /* Initialize keyboard buffer.  */
@@ -1222,7 +1384,7 @@ void machine_specific_shutdown(void)
     }
 }
 
-void machine_handle_pending_alarms(int num_write_cycles)
+void machine_handle_pending_alarms(CLOCK num_write_cycles)
 {
     vicii_handle_pending_alarms_external(num_write_cycles);
 }
@@ -1239,35 +1401,26 @@ void machine_kbdbuf_reset_c64(void)
     kbdbuf_reset(631, 198, 10, (CLOCK)(machine_timing.rfsh_per_sec * machine_timing.cycles_per_rfsh));
 }
 
+/* FIXME: check if this is really needed and remove eventually */
 void machine_autostart_reset_c128(void)
 {
-    /* FIXME: at least 0xa26 is only for 40 cols */
-    autostart_reinit((CLOCK)(3 * machine_timing.rfsh_per_sec * machine_timing.cycles_per_rfsh), 1, 0xa27, 0xe0, 0xec, 0xee);
+    /* autostart_reinit(3, 1); */
 }
 
+/* FIXME: check if this is really needed and remove eventually */
 void machine_autostart_reset_c64(void)
 {
-    autostart_reinit((CLOCK)(3 * machine_timing.rfsh_per_sec * machine_timing.cycles_per_rfsh), 1, 0xcc, 0xd1, 0xd3, 0xd5);
+    /* autostart_reinit(3, 1); */
 }
-
+ 
 /* ------------------------------------------------------------------------- */
 
 /* This hook is called at the end of every frame.  */
 static void machine_vsync_hook(void)
 {
-    CLOCK sub;
-
     drive_vsync_hook();
 
-    autostart_advance();
-
     screenshot_record();
-
-    sub = clk_guard_prevent_overflow(maincpu_clk_guard);
-
-    /* The drive has to deal both with our overflowing and its own one, so
-       it is called even when there is no overflowing in the main CPU.  */
-    drive_cpu_prevent_clk_overflow_all(sub);
 }
 
 void machine_set_restore_key(int v)
@@ -1296,7 +1449,7 @@ void machine_get_line_cycle(unsigned int *line, unsigned int *cycle, int *half_c
 {
     *line = (unsigned int)((maincpu_clk) / machine_timing.cycles_per_line % machine_timing.screen_lines);
     *cycle = (unsigned int)((maincpu_clk) % machine_timing.cycles_per_line);
-    *half_cycle = (int)vicii_get_half_cycle();
+    *half_cycle = vicii_get_half_cycle();
 }
 
 void machine_change_timing(int timeval, int border_mode)
@@ -1331,14 +1484,19 @@ void machine_change_timing(int timeval, int border_mode)
 #ifdef HAVE_MOUSE
     neos_mouse_set_machine_parameter(machine_timing.cycles_per_sec);
 #endif
-    clk_guard_set_clk_base(maincpu_clk_guard, machine_timing.cycles_per_rfsh);
 
     vicii_change_timing(&machine_timing, border_mode);
 
-    cia1_set_timing(machine_context.cia1, machine_timing.cycles_per_sec, machine_timing.power_freq);
-    cia2_set_timing(machine_context.cia2, machine_timing.cycles_per_sec, machine_timing.power_freq);
+    cia1_set_timing(machine_context.cia1,
+                    (int)machine_timing.cycles_per_sec,
+                    machine_timing.power_freq);
+    cia2_set_timing(machine_context.cia2,
+                    (int)machine_timing.cycles_per_sec,
+                    machine_timing.power_freq);
 
     fmopl_set_machine_parameter(machine_timing.cycles_per_sec);
+
+    rsuser_change_timing(machine_timing.cycles_per_sec);
 
     machine_trigger_reset(MACHINE_RESET_MODE_HARD);
 }
@@ -1347,12 +1505,20 @@ void machine_change_timing(int timeval, int border_mode)
 
 int machine_write_snapshot(const char *name, int save_roms, int save_disks, int event_mode)
 {
-    return c128_snapshot_write(name, save_roms, save_disks, event_mode);
+    int err = c128_snapshot_write(name, save_roms, save_disks, event_mode);
+    if ((err < 0) && (snapshot_get_error() == SNAPSHOT_NO_ERROR)) {
+        snapshot_set_error(SNAPSHOT_CANNOT_WRITE_SNAPSHOT);
+    }
+    return err;
 }
 
 int machine_read_snapshot(const char *name, int event_mode)
 {
-    return c128_snapshot_read(name, event_mode);
+    int err = c128_snapshot_read(name, event_mode);
+    if ((err < 0) && (snapshot_get_error() == SNAPSHOT_NO_ERROR)) {
+        snapshot_set_error(SNAPSHOT_CANNOT_READ_SNAPSHOT);
+    }
+    return err;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1417,18 +1583,22 @@ int machine_addr_in_ram(unsigned int addr)
 
     if ((mmucfg == 0x3e) && (mmu_peek(5) == 0xb7)) {
         /* c64 mode */
-        return ((addr < 0xe000 && !(addr >= 0xa000 && addr < 0xc000)));
+        return (
+            addr < 0xe000
+                && !(addr >= 0xa000 && addr < 0xc000)
+                && !(addr >= 0x0073 && addr <= 0x008a)
+            );
     }
     /* FIXME: C128 is a special beast, as it would execute some stuff in system
                 RAM - which this special case hack checks.
                 without this check eg autostarting a prg file with autostartmode=
                 "disk image" will fail. (exit from ROM at $some RAM address)
     */
-    if ((mmucfg & 0xc0) == 0x00) {
-        if ((addr >= 0x2a0) && (addr <= 0x3af)) {
-            return 0;
-        }
+    if ((addr >= 0x2a2) && (addr <= 0x3d1)) {
+        return 0;
     }
+
+    /* printf("addr: %04x mmucfg: %02x\n", addr, mmucfg); */
 
     if ((addr >= 0xd000) && (addr <= 0xdfff)) { /* d000-dfff */
         if ((mmucfg & 0x01) == 0x00) { /* 00000001 */
@@ -1437,7 +1607,9 @@ int machine_addr_in_ram(unsigned int addr)
     }
     if ((addr >= 0xc000) && (addr <= 0xffff))  { /* c000-ffff */
         if ((mmucfg & 0x30) == 0x30) { /* 00110000 */
-            return 1;
+            if (!((addr >= 0xff18) && (addr <= 0xff3c))) {  /* exclude IRQ/NMI handler */
+                return 1;
+            }
         }
     }
     if ((addr >= 0x8000) && (addr <= 0xbfff))  { /* 8000-bfff */
@@ -1471,11 +1643,11 @@ static void c128_userport_set_flag(uint8_t b)
 }
 
 static userport_port_props_t userport_props = {
-    1, /* has pa2 pin */
-    1, /* has pa3 pin */
-    c128_userport_set_flag, /* has flag pin */
-    1, /* has pc pin */
-    1  /* has cnt1, cnt2 and sp pins */
+    1,                      /* port has the pa2 pin */
+    1,                      /* port has the pa3 pin */
+    c128_userport_set_flag, /* port has the flag pin, set flag function */
+    1,                      /* port has the pc pin */
+    1                       /* port has the cnt1, cnt2 and sp pins */
 };
 
 int machine_register_userport(void)

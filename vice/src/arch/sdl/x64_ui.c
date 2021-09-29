@@ -60,13 +60,16 @@
 #include "menu_sound.h"
 #include "menu_speed.h"
 #include "menu_tape.h"
+#include "menu_userport.h"
 #include "menu_video.h"
 #include "ui.h"
 #include "uifonts.h"
 #include "uimenu.h"
 #include "vkbd.h"
 
-static const ui_menu_entry_t x64_main_menu[] = {
+static UI_MENU_CALLBACK(pause_callback_wrapper);
+
+static ui_menu_entry_t x64_main_menu[] = {
     { "Autostart image",
       MENU_ENTRY_DIALOG,
       autostart_callback,
@@ -131,8 +134,9 @@ static const ui_menu_entry_t x64_main_menu[] = {
 #endif
     { "Pause",
       MENU_ENTRY_OTHER_TOGGLE,
-      pause_callback,
+      pause_callback_wrapper,
       NULL },
+    /* Caution: index is hardcoded below */
     { "Advance Frame",
       MENU_ENTRY_OTHER,
       advance_frame_callback,
@@ -141,6 +145,7 @@ static const ui_menu_entry_t x64_main_menu[] = {
       MENU_ENTRY_SUBMENU,
       submenu_callback,
       (ui_callback_data_t)monitor_menu },
+    /* Caution: index is hardcoded below */
     { "Virtual keyboard",
       MENU_ENTRY_OTHER,
       vkbd_callback,
@@ -175,6 +180,22 @@ static const ui_menu_entry_t x64_main_menu[] = {
       NULL },
     SDL_MENU_LIST_END
 };
+
+#ifdef HAVE_NETWORK
+# define MENU_ADVANCE_FRAME_IDX      16
+# define MENU_VIRTUAL_KEYBOARD_IDX   18
+#else
+# define MENU_ADVANCE_FRAME_IDX      15
+# define MENU_VIRTUAL_KEYBOARD_IDX   17
+#endif
+static UI_MENU_CALLBACK(pause_callback_wrapper)
+{
+    x64_main_menu[MENU_ADVANCE_FRAME_IDX].status = 
+        sdl_pause_state || !sdl_menu_state ? MENU_STATUS_ACTIVE : MENU_STATUS_INACTIVE;
+    x64_main_menu[MENU_VIRTUAL_KEYBOARD_IDX].status =
+        sdl_pause_state ? MENU_STATUS_INACTIVE : MENU_STATUS_ACTIVE;
+    return pause_callback(activated, param);
+}
 
 static void c64ui_set_menu_params(int index, menu_draw_t *menu_draw)
 {
@@ -212,7 +233,8 @@ int c64ui_init(void)
 
     sdl_ui_set_menu_params = c64ui_set_menu_params;
 
-    uijoyport_menu_create(1, 1, 1, 1, 0);
+    uijoyport_menu_create(1, 1, 1, 1, 1);
+    uiuserport_menu_create(1);
     uisampler_menu_create();
     uicart_menu_create();
     uidrive_menu_create();
@@ -225,7 +247,7 @@ int c64ui_init(void)
     uimedia_menu_create();
 
     sdl_ui_set_main_menu(x64_main_menu);
-    sdl_ui_vicii_font_init();
+    sdl_ui_font_init("chargen", 0, 0x800, 0);
     sdl_vkbd_set_vkbd(&vkbd_c64);
 
 #ifdef HAVE_FFMPEG
@@ -242,6 +264,7 @@ void c64ui_shutdown(void)
     uicart_menu_shutdown();
     uipalette_menu_shutdown();
     uijoyport_menu_shutdown();
+    uiuserport_menu_shutdown();
 
 #ifdef HAVE_MIDI
     sdl_menu_midi_in_free();
@@ -256,5 +279,5 @@ void c64ui_shutdown(void)
     sdl_menu_ffmpeg_shutdown();
 #endif
     uimedia_menu_shutdown();
-    sdl_ui_vicii_font_shutdown();
+    sdl_ui_font_shutdown();
 }

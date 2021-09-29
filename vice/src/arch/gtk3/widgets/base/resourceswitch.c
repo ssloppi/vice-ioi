@@ -56,12 +56,12 @@
 #include "resourceswitch.h"
 
 
-/** \brief  Handler for the "destroy" event of the switch
+/** \brief  Handler for the 'destroy' event of the switch
  *
  * Frees the heap-allocated copy of the resource name.
  *
- * \param[in]   widget      switch
- * \param[in]   user_data   extra event data (unused)
+ * \param[in,out]   widget      switch
+ * \param[in]       user_data   extra event data (unused)
  */
 static void on_switch_destroy(GtkWidget *widget, gpointer user_data)
 {
@@ -69,10 +69,10 @@ static void on_switch_destroy(GtkWidget *widget, gpointer user_data)
 }
 
 
-/** \brief  Handler for the "state-set" event of the switch
+/** \brief  Handler for the 'state-set' event of the switch
  *
- * \param[in]   widget      switch
- * \param[in]   user_data   resource name
+ * \param[in,out]   widget      switch
+ * \param[in]       user_data   resource name
  */
 static void on_switch_state_set(GtkWidget *widget, gpointer user_data)
 {
@@ -84,19 +84,16 @@ static void on_switch_state_set(GtkWidget *widget, gpointer user_data)
     state = gtk_switch_get_active(GTK_SWITCH(widget));
     if (resources_get_int(resource, &current) < 0) {
         /* invalid resource, exit */
-        log_error(LOG_ERR, "invalid resource name'%s'\n", resource);
+        log_error(LOG_ERR, "invalid resource name'%s'", resource);
         return;
     }
 
     /* make sure we don't update a resource when the UI happens to be out of
      * sync for some reason */
     if (state != current) {
-#if 0
-        debug_gtk3("setting %s to %s.", resource, state ? "True": "False");
-#endif
         if (resources_set_int(resource, state ? 1 : 0) < 0) {
             log_error(LOG_ERR,
-                    "setting %s to %s failed\n",
+                    "setting %s to %s failed",
                     resource, state ? "True": "False");
             /* get current resource value (validity of the name has been
              * checked already */
@@ -107,15 +104,15 @@ static void on_switch_state_set(GtkWidget *widget, gpointer user_data)
 }
 
 
-/** \brief  Check button setup helper
+/** \brief  Switch setup helper
  *
  * Called by either vice_gtk3_resource_switch_create() or
  * vice_gtk3_resource_switch_create_printf() to finish setting up the resource
  * switch \a widget.
  *
- * \param[in]   widget  switch
+ * \param[in,out]   widget  switch
  *
- * \return  new check button
+ * \return  GtkSwitch
  */
 static GtkWidget *resource_switch_new_helper(GtkWidget *widget)
 {
@@ -126,7 +123,7 @@ static GtkWidget *resource_switch_new_helper(GtkWidget *widget)
     resource = resource_widget_get_resource_name(widget);
     if (resources_get_int(resource, &state) < 0) {
         /* invalid resource, set state to off */
-        log_error(LOG_ERR, "invalid resource name '%s'\n", resource);
+        log_error(LOG_ERR, "invalid resource name '%s'", resource);
         state = 0;
     }
 
@@ -141,17 +138,15 @@ static GtkWidget *resource_switch_new_helper(GtkWidget *widget)
             widget,
             vice_gtk3_resource_switch_reset,
             vice_gtk3_resource_switch_factory,
-            vice_gtk3_resource_switch_sync,
-            vice_gtk3_resource_switch_apply);
+            vice_gtk3_resource_switch_sync);
     g_signal_connect(widget, "state-set", G_CALLBACK(on_switch_state_set),
             (gpointer)resource);
-    g_signal_connect(widget, "destroy", G_CALLBACK(on_switch_destroy),
+    g_signal_connect_unlocked(widget, "destroy", G_CALLBACK(on_switch_destroy),
             NULL);
 
     gtk_widget_show(widget);
     return widget;
 }
-
 
 
 /** \brief  Create switch to toggle \a resource
@@ -164,7 +159,7 @@ static GtkWidget *resource_switch_new_helper(GtkWidget *widget)
  *
  * \note    The resource name is stored in the "ResourceName" property.
  *
- * \return  new switch
+ * \return  GtkSwitch
  */
 GtkWidget *vice_gtk3_resource_switch_new(const char *resource)
 {
@@ -227,9 +222,9 @@ gboolean vice_gtk3_resource_switch_set(GtkWidget *widget, gboolean value)
 /** \brief  Get value for \a widget
  *
  * \param[in,out]   widget  switch
- * \param[out       value   object to store value
+ * \param[out]      value   object to store value
  *
- * \return  bool
+ * \return  TRUE if \a value was set
  */
 gboolean vice_gtk3_resource_switch_get(GtkWidget *widget, gboolean *value)
 {
@@ -237,7 +232,6 @@ gboolean vice_gtk3_resource_switch_get(GtkWidget *widget, gboolean *value)
     int state;
 
     if (resources_get_int(resource, &state) < 0) {
-        *value = FALSE;
         return FALSE;
     }
     *value = (gboolean)state;
@@ -249,7 +243,7 @@ gboolean vice_gtk3_resource_switch_get(GtkWidget *widget, gboolean *value)
  *
  * \param[in,out]   widget  resource switch
  *
- * \return  bool
+ * \return  TRUE if the widget was reset to its original state
  */
 gboolean vice_gtk3_resource_switch_reset(GtkWidget *widget)
 {
@@ -258,9 +252,11 @@ gboolean vice_gtk3_resource_switch_reset(GtkWidget *widget)
 }
 
 
-/** \brief  Reset switch to factory state
+/** \brief  Reset switch to factory value
  *
- * \param[in,out]   check   check button
+ * \param[in,out]   widget  check button
+ *
+ * \return  TRUE if the widget was set to its factory value
  */
 gboolean vice_gtk3_resource_switch_factory(GtkWidget *widget)
 {
@@ -269,13 +265,11 @@ gboolean vice_gtk3_resource_switch_factory(GtkWidget *widget)
 
     resource = resource_widget_get_resource_name(widget);
     if (resources_get_default_value(resource, &value) < 0) {
-        debug_gtk3("failed to get factory value for resource '%s'.", resource);
+        log_error(LOG_ERR,
+                "failed to get factory value for resource '%s'.",
+                resource);
         return FALSE;
     }
-#if 0
-    debug_gtk3("resetting %s to factory value %s.",
-            resource, value ? "True" : "False");
-#endif
     return vice_gtk3_resource_switch_set(widget, (gboolean)value);
 }
 
@@ -284,8 +278,7 @@ gboolean vice_gtk3_resource_switch_factory(GtkWidget *widget)
  *
  * \param[in,out]   widget  resource switch widget
  *
- *
- * \return bool
+ * \return  TRUE if the widget was synchronized
  */
 gboolean vice_gtk3_resource_switch_sync(GtkWidget *widget)
 {
@@ -312,17 +305,4 @@ gboolean vice_gtk3_resource_switch_sync(GtkWidget *widget)
         return vice_gtk3_resource_switch_set(widget, (gboolean)resource_val);
     }
     return TRUE;
-}
-
-
-/** \brief  Set resource to the widget's value
- *
- * \param[in,out]   widget  resource switch button widget
- *
- * \return  bool
- */
-gboolean vice_gtk3_resource_switch_apply(GtkWidget *widget)
-{
-    NOT_IMPLEMENTED_WARN_ONLY();
-    return FALSE;
 }

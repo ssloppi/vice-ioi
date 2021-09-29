@@ -36,7 +36,6 @@
 #include "archdep.h"
 #include "attach.h"
 #include "autostart.h"
-#include "clkguard.h"
 #include "cmdline.h"
 #include "crc32.h"
 #include "datasette.h"
@@ -123,12 +122,12 @@ static int event_image_append(const char *filename, char **mapped_name, int appe
             if (mapped_name != NULL) {
                 if (append == 0) {
                     if (event_image_list_ptr->next->mapped_filename != NULL) {
-                        *mapped_name = lib_stralloc(event_image_list_ptr->next->mapped_filename);
+                        *mapped_name = lib_strdup(event_image_list_ptr->next->mapped_filename);
                     } else {
                         return 1;
                     }
                 } else {
-                    event_image_list_ptr->next->mapped_filename = lib_stralloc(*mapped_name);
+                    event_image_list_ptr->next->mapped_filename = lib_strdup(*mapped_name);
                 }
             }
             return 0;
@@ -140,10 +139,10 @@ static int event_image_append(const char *filename, char **mapped_name, int appe
 
     event_image_list_ptr = event_image_list_ptr->next;
     event_image_list_ptr->next = NULL;
-    event_image_list_ptr->orig_filename = lib_stralloc(filename);
+    event_image_list_ptr->orig_filename = lib_strdup(filename);
     event_image_list_ptr->mapped_filename = NULL;
     if (mapped_name != NULL && append) {
-        event_image_list_ptr->mapped_filename = lib_stralloc(*mapped_name);
+        event_image_list_ptr->mapped_filename = lib_strdup(*mapped_name);
     }
 
     return 1;
@@ -151,6 +150,7 @@ static int event_image_append(const char *filename, char **mapped_name, int appe
 
 
 void event_record_attach_in_list(event_list_state_t *list, unsigned int unit,
+                                 unsigned int drive,
                                  const char *filename, unsigned int read_only)
 {
     char *event_data;
@@ -171,10 +171,11 @@ void event_record_attach_in_list(event_list_state_t *list, unsigned int unit,
 
     event_data = lib_malloc(size);
     event_data[0] = unit;
-    event_data[1] = read_only;
+    event_data[1] = drive;
+    event_data[2] = read_only;
 
     if (event_image_include) {
-        strcpy(&event_data[2], filename);
+        strcpy(&event_data[3], filename);
         if (event_image_append(filename, NULL, 0) == 1) {
             FILE *fd;
             size_t file_len = 0;
@@ -198,12 +199,12 @@ void event_record_attach_in_list(event_list_state_t *list, unsigned int unit,
     } else {
         uint32_t crc = crc32_file(filename);
 
-        strcpy(&event_data[2], "");
+        strcpy(&event_data[3], "");
 
         /* store crc32 in little-endian format */
         crc32_to_le(((uint8_t *)event_data + 3), crc);
 
-        strcpy(&event_data[3 + CRC32_SIZE], strfile);
+        strcpy(&event_data[4 + CRC32_SIZE], strfile);
     }
 
     lib_free(strdir);
@@ -214,20 +215,20 @@ void event_record_attach_in_list(event_list_state_t *list, unsigned int unit,
     list->current = list->current->next;
 }
 
-void event_record_attach_image(unsigned int unit, const char *filename,
+void event_record_attach_image(unsigned int unit, unsigned int drive, const char *filename,
                                unsigned int read_only)
 {
     if (record_active == 0) {
         return;
     }
 
-    event_record_attach_in_list(event_list, unit, filename, read_only);
+    event_record_attach_in_list(event_list, unit, drive, filename, read_only);
 }
 
 
 static void event_playback_attach_image(void *data, unsigned int size)
 {
-    unsigned int unit, read_only;
+    unsigned int unit, drive, read_only;
     char *orig_filename, *filename = NULL;
     size_t file_len;
     uint32_t crc_to_attach;
@@ -236,19 +237,20 @@ static void event_playback_attach_image(void *data, unsigned int size)
     uint8_t crc_snap[CRC32_SIZE];   /* CRC32 of file in the snapshot */
 
     unit = (unsigned int)((char*)data)[0];
-    read_only = (unsigned int)((char*)data)[1];
-    orig_filename = &((char*)data)[2];
+    drive = (unsigned int)((char*)data)[1];
+    read_only = (unsigned int)((char*)data)[2];
+    orig_filename = &((char*)data)[3];
 
     if (*orig_filename == 0) {
         /* no image attached */
-        orig_filename = (char *) data + 3 + CRC32_SIZE;
+        orig_filename = (char *) data + 4 + CRC32_SIZE;
 
         if (event_image_append(orig_filename, &filename, 0) != 0) {
 #if 0
-            crc_to_attach = *(uint32_t *)(((char *)data) + 3);
+            crc_to_attach = *(uint32_t *)(((char *)data) + 4);
 #endif
             /* looks weird, but crc_to_attach is used in messages */
-            crc_to_attach = crc32_from_le(data + 3);
+            crc_to_attach = crc32_from_le((const uint8_t *)data + 3);
             crc32_to_le(crc_file, crc_to_attach);
 
             while (1) {
@@ -256,7 +258,7 @@ static void event_playback_attach_image(void *data, unsigned int size)
 
                 filename = ui_get_file(
                         "Please attach image %s (CRC32 checksum 0x" PRIu32 ")",
-                        (char *) data + 3 + sizeof(uint32_t), crc_to_attach);
+                        (char *) data + 4 + sizeof(uint32_t), crc_to_attach);
                 if (filename == NULL) {
                     break;
                 }
@@ -277,7 +279,7 @@ static void event_playback_attach_image(void *data, unsigned int size)
             event_image_append(orig_filename, &filename, 1);
         }
     } else {
-        file_len = size - strlen(orig_filename) - 3;
+        file_len = size - strlen(orig_filename) - 4;
 
         if (file_len > 0) {
             FILE *fd;
@@ -289,7 +291,7 @@ static void event_playback_attach_image(void *data, unsigned int size)
                 goto error;
             }
 
-            if (fwrite((char*)data + strlen(orig_filename) + 3, file_len, 1, fd) != 1) {
+            if (fwrite((char*)data + strlen(orig_filename) + 4, file_len, 1, fd) != 1) {
                 ui_error("Cannot write image file %s", filename);
                 goto error;
             }
@@ -309,7 +311,7 @@ static void event_playback_attach_image(void *data, unsigned int size)
         tape_image_event_playback(unit, filename);
     } else {
         resources_set_int_sprintf("AttachDevice%dReadonly", read_only, unit);
-        file_system_event_playback(unit, filename);
+        file_system_event_playback(unit, drive, filename);
     }
 
 error:
@@ -345,7 +347,6 @@ void event_record_in_list(event_list_state_t *list, unsigned int type,
             memcpy(event_data, data, size);
             break;
         case EVENT_LIST_END:            /* fall through */
-        case EVENT_OVERFLOW:            /* fall through */
         case EVENT_KEYBOARD_CLEAR:
             break;
         default:
@@ -376,14 +377,8 @@ static void next_alarm_set(void)
 
     new_value = event_list->current->clk;
 
-    if (maincpu_clk > CLKGUARD_SUB_MIN
-        && new_value < maincpu_clk - CLKGUARD_SUB_MIN) {
-        new_value += clk_guard_clock_sub(maincpu_clk_guard);
-    }
-
     alarm_set(event_alarm, new_value);
 }
-
 static void next_current_list(void)
 {
     event_list->current = event_list->current->next;
@@ -396,7 +391,7 @@ static void event_alarm_handler(CLOCK offset, void *data)
     /* when recording set a timestamp */
     if (record_active) {
         ui_display_event_time(current_timestamp++, 0);
-        next_timestamp_clk = next_timestamp_clk + machine_get_cycles_per_second();
+        next_timestamp_clk = next_timestamp_clk + (CLOCK)machine_get_cycles_per_second();
         alarm_set(event_alarm, next_timestamp_clk);
         return;
     }
@@ -434,7 +429,8 @@ static void event_alarm_handler(CLOCK offset, void *data)
                 if (unit == 1) {
                     tape_image_event_playback(unit, filename);
                 } else {
-                    file_system_event_playback(unit, filename);
+                    /* TODO: drive 1? */
+                    file_system_event_playback(unit, 0, filename);
                 }
             }
             break;
@@ -447,10 +443,9 @@ static void event_alarm_handler(CLOCK offset, void *data)
         case EVENT_LIST_END:
             event_playback_stop();
             break;
-        case EVENT_OVERFLOW:
-            break;
         default:
-            log_error(event_log, "Unknow event type %i.", event_list->current->type);
+            log_error(event_log, "Unknow event type %u.",
+                    event_list->current->type);
     }
 
     if (event_list->current->type != EVENT_LIST_END
@@ -504,7 +499,8 @@ void event_playback_event_list(event_list_state_t *list)
                     if (unit == 1) {
                         tape_image_event_playback(1, NULL);
                     } else {
-                        file_system_event_playback(unit, NULL);
+                        /* TODO: drive 1? */
+                        file_system_event_playback(unit, 0, NULL);
                     }
                     break;
                 }
@@ -515,7 +511,7 @@ void event_playback_event_list(event_list_state_t *list)
                 resources_set_value_event(current->data, current->size);
                 break;
             default:
-                log_error(event_log, "Unknow event type %i.", current->type);
+                log_error(event_log, "Unknow event type %u.", current->type);
         }
         current = current->next;
     }
@@ -594,7 +590,7 @@ static void warp_end_list(void)
 
     while (curr->type != EVENT_LIST_END) {
         if (curr->type == EVENT_ATTACHIMAGE) {
-            event_image_append(&((char*)curr->data)[2], NULL, 0);
+            event_image_append(&((char*)curr->data)[3], NULL, 0);
         }
 
         curr = curr->next;
@@ -677,9 +673,11 @@ static void event_record_start_trap(uint16_t addr, void *data)
 {
     switch (event_start_mode) {
         case EVENT_START_MODE_FILE_SAVE:
-            if (machine_write_snapshot(event_snapshot_path(event_start_snapshot),
-                                       1, 1, 0) < 0) {
-                ui_error("Could not create start snapshot file %s.", event_snapshot_path(event_start_snapshot));
+            if (machine_write_snapshot(
+                        event_snapshot_path(event_start_snapshot),
+                        1, 1, 0) < 0) {
+                ui_error("Could not create start snapshot file %s.",
+                        event_snapshot_path(event_start_snapshot));
                 ui_display_recording(0);
                 return;
             }
@@ -691,8 +689,10 @@ static void event_record_start_trap(uint16_t addr, void *data)
             current_timestamp = 0;
             break;
         case EVENT_START_MODE_FILE_LOAD:
-            if (machine_read_snapshot(event_snapshot_path(event_end_snapshot), 1) < 0) {
-                ui_error("Error reading end snapshot file %s.", event_snapshot_path(event_end_snapshot));
+            if (machine_read_snapshot(event_snapshot_path(event_end_snapshot),
+                        1) < 0) {
+                ui_error("Error reading end snapshot file %s.",
+                        event_snapshot_path(event_end_snapshot));
                 return;
             }
             warp_end_list();
@@ -730,6 +730,9 @@ static void event_record_start_trap(uint16_t addr, void *data)
     /* use alarm for timestamps */
     milestone_timestamp_alarm = 0;
     alarm_set(event_alarm, next_timestamp_clk);
+
+    record_active = 1;
+    ui_display_recording(1);
 }
 
 int event_record_start(void)
@@ -747,8 +750,6 @@ int event_record_start(void)
     }
 
     interrupt_maincpu_trigger_trap(event_record_start_trap, (void *)0);
-
-    ui_display_recording(1);
 
     return 0;
 }
@@ -810,8 +811,8 @@ void event_reset_ack(void)
 }
 
 /* XXX: the 'unused' (prev. 'data') param is only passed from one function:
- * 	interrupt_maincpu_trigger_trap(), and that one passes (void*)0, ie NULL.
- * 	So fixing the shadowing of 'data' should be fine.
+ *      interrupt_maincpu_trigger_trap(), and that one passes (void*)0, ie NULL.
+ *      So fixing the shadowing of 'data' should be fine.
  */
 static void event_playback_start_trap(uint16_t addr, void *unused)
 {
@@ -852,7 +853,7 @@ static void event_playback_start_trap(uint16_t addr, void *unused)
                         event_snapshot_path((char *)(&data[1])), 0) < 0
                     && machine_read_snapshot(
                         event_snapshot_path(event_start_snapshot), 0) < 0) {
-                    char *st = lib_stralloc(event_snapshot_path((char *)(&data[1])));
+                    char *st = lib_strdup(event_snapshot_path((char *)(&data[1])));
                     ui_error("Error reading start snapshot file. Tried %s and %s", st, event_snapshot_path(event_start_snapshot));
                     lib_free(st);
                     ui_display_playback(0, NULL);
@@ -1045,7 +1046,7 @@ int event_snapshot_read_module(struct snapshot_s *s, int event_mode)
                 return -1;
             }
 
-            if (SMR_DW(m, &(clk)) < 0) {
+            if (SMR_CLOCK(m, &(clk)) < 0) {
                 snapshot_module_close(m);
                 return -1;
             }
@@ -1076,7 +1077,7 @@ int event_snapshot_read_module(struct snapshot_s *s, int event_mode)
             }
         } else {
             /* insert timestamps each second */
-            while (next_timestamp_clk < clk || (type == EVENT_OVERFLOW && next_timestamp_clk < maincpu_clk_guard->clk_max_value))
+            while (next_timestamp_clk < clk)
             {
                 curr->type = EVENT_TIMESTAMP;
                 curr->clk = next_timestamp_clk;
@@ -1085,10 +1086,6 @@ int event_snapshot_read_module(struct snapshot_s *s, int event_mode)
                 curr = curr->next;
                 next_timestamp_clk += machine_get_cycles_per_second();
                 num_of_timestamps++;
-            }
-
-            if (type == EVENT_OVERFLOW) {
-                next_timestamp_clk -= clk_guard_clock_sub(maincpu_clk_guard);
             }
         }
 
@@ -1127,7 +1124,7 @@ int event_snapshot_write_module(struct snapshot_s *s, int event_mode)
         return 0;
     }
 
-    m = snapshot_module_create(s, "EVENT", 0, 0);
+    m = snapshot_module_create(s, "EVENT", 0, 1);
 
     if (m == NULL) {
         return -1;
@@ -1139,7 +1136,7 @@ int event_snapshot_write_module(struct snapshot_s *s, int event_mode)
         if (curr->type != EVENT_TIMESTAMP
             && (0
                 || SMW_DW(m, (uint32_t)curr->type) < 0
-                || SMW_DW(m, (uint32_t)curr->clk) < 0
+                || SMW_CLOCK(m, curr->clk) < 0
                 || SMW_DW(m, (uint32_t)curr->size) < 0
                 || SMW_BA(m, curr->data, curr->size) < 0)) {
             snapshot_module_close(m);
@@ -1292,24 +1289,10 @@ int event_cmdline_options_init(void)
 
 /*-----------------------------------------------------------------------*/
 
-static void clk_overflow_callback(CLOCK sub, void *data)
-{
-    if (event_record_active()) {
-        event_record(EVENT_OVERFLOW, NULL, 0);
-    }
-
-    if (next_timestamp_clk) {
-        next_timestamp_clk -= sub;
-    }
-}
-
-
 void event_init(void)
 {
     event_log = log_open("Event");
 
     event_alarm = alarm_new(maincpu_alarm_context, "Event",
                             event_alarm_handler, NULL);
-
-    clk_guard_add_callback(maincpu_clk_guard, clk_overflow_callback, NULL);
 }

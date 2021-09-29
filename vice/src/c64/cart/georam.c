@@ -71,9 +71,6 @@
  *
  * RAM size | $dfff
  * ------------------
- *    64k   | $00-$03
- *   128k   | $00-$07
- *   256k   | $00-$0f
  *   512k   | $00-$1f
  *  1024k   | $00-$3f
  *  2048k   | $00-$7f
@@ -121,7 +118,7 @@ static int georam_enabled = 0;
 /* Size of the GEORAM.  */
 static int georam_size = 0;
 
-/* Size of the GEORAM in KB.  */
+/* Size of the GEORAM in KiB.  */
 static int georam_size_kb = 0;
 
 /* Filename of the GEORAM image.  */
@@ -142,33 +139,35 @@ static void georam_io2_store(uint16_t addr, uint8_t byte);
 static int georam_dump(void);
 
 static io_source_t georam_io1_device = {
-    CARTRIDGE_NAME_GEORAM,
-    IO_DETACH_RESOURCE,
-    "GEORAM",
-    0xde00, 0xdeff, 0xff,
-    1, /* read is always valid */
-    georam_io1_store,
-    georam_io1_read,
-    georam_io1_read,
-    georam_dump,
-    CARTRIDGE_GEORAM,
-    0,
-    0
+    CARTRIDGE_NAME_GEORAM, /* name of the device */
+    IO_DETACH_RESOURCE,    /* use resource to detach the device when involved in a read-collision */
+    "GEORAM",              /* resource to set to '0' */
+    0xde00, 0xdeff, 0xff,  /* range for the device, range is different for vic20 */
+    1,                     /* read is always valid */
+    georam_io1_store,      /* store function */
+    NULL,                  /* NO poke function */
+    georam_io1_read,       /* read function */
+    georam_io1_read,       /* peek function */
+    georam_dump,           /* device state information dump function */
+    CARTRIDGE_GEORAM,      /* cartridge ID */
+    IO_PRIO_NORMAL,        /* normal priority, device read needs to be checked for collisions */
+    0                      /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_t georam_io2_device = {
-    CARTRIDGE_NAME_GEORAM,
-    IO_DETACH_RESOURCE,
-    "GEORAM",
-    0xdf80, 0xdfff, 0x7f,
-    0,
-    georam_io2_store,
-    NULL,
-    georam_io2_peek,
-    georam_dump,
-    CARTRIDGE_GEORAM,
-    0,
-    0
+    CARTRIDGE_NAME_GEORAM, /* name of the device */
+    IO_DETACH_RESOURCE,    /* use resource to detach the device when involved in a read-collision */
+    "GEORAM",              /* resource to set to '0' */
+    0xdf80, 0xdfff, 0x01,  /* range for the device, regs:$dffe-$dfff, mirrors:$df80-$dffd, range is different for vic20 */
+    0,                     /* read is never valid, regs are write only */
+    georam_io2_store,      /* store function */
+    NULL,                  /* NO poke function */
+    NULL,                  /* NO read function */
+    georam_io2_peek,       /* peek function */
+    georam_dump,           /* device state information dump function */
+    CARTRIDGE_GEORAM,      /* cartridge ID */
+    IO_PRIO_NORMAL,        /* normal priority, device read needs to be checked for collisions */
+    0                      /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *georam_io1_list_item = NULL;
@@ -225,7 +224,7 @@ static void georam_io2_store(uint16_t addr, uint8_t byte)
 
 static int georam_dump(void)
 {
-    mon_out("Size: %d Kb, Bank: %d, Window: %d\n", georam_size_kb, georam[1], georam[0]);
+    mon_out("Size: %d KiB, Bank: %d, Window: %d\n", georam_size_kb, georam[1], georam[0]);
     return 0;
 }
 
@@ -246,7 +245,7 @@ static int georam_activate(void)
 
     old_georam_ram_size = georam_size;
 
-    log_message(georam_log, "%dKB unit installed.", georam_size >> 10);
+    log_message(georam_log, "%dKiB unit installed.", georam_size >> 10);
 
     if (!util_check_null_string(georam_filename)) {
         if (util_file_load(georam_filename, georam_ram, (size_t)georam_size, UTIL_FILE_LOAD_RAW) < 0) {
@@ -337,9 +336,7 @@ static int set_georam_size(int val, void *param)
     }
 
     switch (val) {
-        case 64:
-        case 128:
-        case 256:
+        /* sizes smaller than 512k never existed */
         case 512:
         case 1024:
         case 2048:
@@ -418,12 +415,13 @@ static const resource_string_t resources_string[] = {
 };
 
 static const resource_int_t resources_int[] = {
-    { "GEORAM", 0, RES_EVENT_STRICT, (resource_value_t)0,
-      &georam_enabled, set_georam_enabled, NULL },
     { "GEORAMsize", 512, RES_EVENT_NO, NULL,
       &georam_size_kb, set_georam_size, NULL },
     { "GEORAMImageWrite", 0, RES_EVENT_NO, NULL,
       &georam_write_image, set_georam_image_write, NULL },
+    /* CAUTION: the order matters here, enable must happen last */
+    { "GEORAM", 0, RES_EVENT_STRICT, (resource_value_t)0,
+      &georam_enabled, set_georam_enabled, NULL },
     RESOURCE_INT_LIST_END
 };
 
@@ -466,7 +464,7 @@ static const cmdline_option_t cmdline_options[] =
       NULL, "Disable the GEO-RAM expansion unit" },
     { "-georamsize", SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
       NULL, NULL, "GEORAMsize", NULL,
-      "<size in KB>", "Size of the GEORAM expansion unit" },
+      "<size in KiB>", "Size of the GEORAM expansion unit" },
     { "-georamimage", SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
       NULL, NULL, "GEORAMfilename", NULL,
       "<Name>", "Specify name of GEORAM image" },
@@ -549,7 +547,7 @@ void georam_config_setup(uint8_t *rawcart)
 int georam_bin_attach(const char *filename, uint8_t *rawcart)
 {
     FILE *fd;
-    int size;
+    size_t size;
 
     fd = fopen(filename, MODE_READ);
     if (fd == NULL) {
@@ -558,7 +556,7 @@ int georam_bin_attach(const char *filename, uint8_t *rawcart)
     size = util_file_length(fd);
     fclose(fd);
 
-    if (set_georam_size(size / 1024, NULL) < 0) {
+    if (set_georam_size((uint32_t)(size / 1024), NULL) < 0) {
         return -1;
     }
 
@@ -602,12 +600,12 @@ int georam_flush_image(void)
    type  | name    | version | description
    ---------------------------------------
    BYTE  | io swap |   0.1   | VIC20 I/O swap flag
-   DWORD | size    |   0.0+  | size in KB
+   DWORD | size    |   0.0+  | size in KiB
    ARRAY | regs    |   0.0+  | 2 BYTES of register data
    ARRAY | RAM     |   0.0+  | 65536, 131072, 262144, 524288, 1048576, 2097152 or 4194304 BYTES of RAM data
  */
 
-static char snap_module_name[] = "GEORAM";
+static const char snap_module_name[] = "GEORAM";
 #define SNAP_MAJOR 0
 #define SNAP_MINOR 1
 
@@ -646,13 +644,13 @@ int georam_read_snapshot_module(snapshot_t *s)
     }
 
     /* Do not accept versions higher than current */
-    if (vmajor > SNAP_MAJOR || vminor > SNAP_MINOR) {
+    if (snapshot_version_is_bigger(vmajor, vminor, SNAP_MAJOR, SNAP_MINOR)) {
         snapshot_set_error(SNAPSHOT_MODULE_HIGHER_VERSION);
         goto fail;
     }
 
     /* new in 0.1 */
-    if (SNAPVAL(vmajor, vminor, 0, 1)) {
+    if (!snapshot_version_is_smaller(vmajor, vminor, 0, 1)) {
         if (SMR_B_INT(m, &georam_io_swap) < 0) {
             goto fail;
         }

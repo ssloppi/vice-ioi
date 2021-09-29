@@ -1,5 +1,5 @@
-/*
- * hs-win32-dll.c - Windows (HardSID.dll) specific hardsid driver.
+/** \file   hs-win32-dll.c
+ * \brief   Windows (HardSID.dll) specific hardsid driver
  *
  * Written by
  *  Andreas Boose <viceteam@t-online.de>
@@ -86,8 +86,8 @@ typedef void (CALLBACK* WriteToHardSID_t)(BYTE, BYTE, BYTE);
 /* HardSID USB (HardSID 4U) */
 typedef void (CALLBACK* HardSID_Reset_t)(BYTE);
 typedef BOOL (CALLBACK* HardSID_Lock_t) (BYTE);
-typedef void (CALLBACK* HardSID_AbortPlay_t)(BYTE); //hard flush
-typedef void (CALLBACK* HardSID_Flush_t)(BYTE); //soft flush
+typedef void (CALLBACK* HardSID_AbortPlay_t)(BYTE); /* hard flush */
+typedef void (CALLBACK* HardSID_Flush_t)(BYTE); /* soft flush */
 typedef void (CALLBACK* HardSID_Write_t)(BYTE, WORD, BYTE, BYTE);
 typedef void (CALLBACK* HardSID_Delay_t)(BYTE, WORD);
 

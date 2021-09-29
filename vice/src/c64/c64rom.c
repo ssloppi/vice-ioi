@@ -41,6 +41,8 @@
 #include "sysfile.h"
 #include "types.h"
 
+int kernal_revision_cmdline = -1;
+
 static log_t c64rom_log = LOG_ERR;
 
 /* Flag: nonzero if the Kernal and BASIC ROMs have been loaded.  */
@@ -91,10 +93,10 @@ int c64rom_get_kernal_checksum(void)
     int id;                     /* ROM identification number */
 
     if (c64rom_get_kernal_chksum_id(&sum, &id) < 0) {
-        log_warning(c64rom_log, "Unknown Kernal image.  ID: %d ($%02X) Sum: %d ($%04X).", id, id, sum, sum);
+        log_warning(c64rom_log, "Unknown Kernal image.  ID: %d ($%02X) Sum: %d ($%04X).", id, (unsigned int)id, sum, sum);
         return -1;
     } else {
-        log_message(c64rom_log, "Kernal rev #%d ($%02X) Sum: %d ($%04X).", id, id, sum, sum);
+        log_message(c64rom_log, "Kernal rev #%d ($%02X) Sum: %d ($%04X).", id, (unsigned int)id, sum, sum);
     }
 
     return 0;
@@ -102,14 +104,42 @@ int c64rom_get_kernal_checksum(void)
 
 int c64rom_cartkernal_active = 0;
 
+#define NUM_TRAP_DEVICES 9  /* FIXME: is there a better constant ? */
+static int trapfl[NUM_TRAP_DEVICES];
+static int trapdevices[NUM_TRAP_DEVICES + 1] = { 1, 4, 5, 6, 7, 8, 9, 10, 11, -1 };
+
+static void get_trapflags(void)
+{
+    int i;
+    for(i = 0; trapdevices[i] != -1; i++) {
+        resources_get_int_sprintf("VirtualDevice%d", &trapfl[i], trapdevices[i]);
+    }
+}
+
+static void clear_trapflags(void)
+{
+    int i;
+    for(i = 0; trapdevices[i] != -1; i++) {
+        resources_set_int_sprintf("VirtualDevice%d", 0, trapdevices[i]);
+    }
+}
+
+static void restore_trapflags(void)
+{
+    int i;
+    for(i = 0; trapdevices[i] != -1; i++) {
+        resources_set_int_sprintf("VirtualDevice%d", trapfl[i], trapdevices[i]);
+    }
+}
+
 /* the extra parameter cartkernal is used to replace the kernal
    with a cartridge kernal rom image, if it is NULL normal kernal
    is used */
 int c64rom_load_kernal(const char *rom_name, uint8_t *cartkernal)
 {
-    int trapfl, rev;
-    uint16_t sum;                   /* ROM checksum */
-    int id;                     /* ROM identification number */
+    int rev;
+    uint16_t sum;       /* ROM checksum */
+    int id;             /* ROM identification number */
 
     if (!rom_loaded) {
         return 0;
@@ -117,23 +147,23 @@ int c64rom_load_kernal(const char *rom_name, uint8_t *cartkernal)
 
     /* disable traps before loading the ROM */
     if (machine_class != VICE_MACHINE_VSID) {
-        resources_get_int("VirtualDevices", &trapfl);
-        resources_set_int("VirtualDevices", 0);
+        get_trapflags();
+        clear_trapflags();
     }
 
     /* Load Kernal ROM.  */
     if (cartkernal == NULL) {
         if (c64rom_cartkernal_active == 1) {
             if (machine_class != VICE_MACHINE_VSID) {
-                resources_set_int("VirtualDevices", trapfl);
+                restore_trapflags();
             }
             return -1;
         }
 
-        if (sysfile_load(rom_name, c64memrom_kernal64_rom, C64_KERNAL_ROM_SIZE, C64_KERNAL_ROM_SIZE) < 0) {
+        if (sysfile_load(rom_name, machine_name, c64memrom_kernal64_rom, C64_KERNAL_ROM_SIZE, C64_KERNAL_ROM_SIZE) < 0) {
             log_error(c64rom_log, "Couldn't load kernal ROM `%s'.", rom_name);
             if (machine_class != VICE_MACHINE_VSID) {
-                resources_set_int("VirtualDevices", trapfl);
+                restore_trapflags();
             }
             return -1;
         }
@@ -153,12 +183,23 @@ int c64rom_load_kernal(const char *rom_name, uint8_t *cartkernal)
         rev = id;
     }
     if (machine_class != VICE_MACHINE_C64DTV) {
+        /* patch kernal to revision given on cmdline */
+        if (kernal_revision_cmdline != -1) {
+            if (rev !=  C64_KERNAL_UNKNOWN) {
+                log_verbose("patching kernal revision:%d to revision: %d", rev, kernal_revision_cmdline);
+                if (patch_rom_idx(kernal_revision_cmdline) >= 0) {
+                    rev = kernal_revision_cmdline;
+                }
+            }
+            /* do this only once */
+            kernal_revision_cmdline = -1;
+        }
         resources_set_int("KernalRev", rev);
     }
     memcpy(c64memrom_kernal64_trap_rom, c64memrom_kernal64_rom, C64_KERNAL_ROM_SIZE);
 
     if (machine_class != VICE_MACHINE_VSID) {
-        resources_set_int("VirtualDevices", trapfl);
+        restore_trapflags();
     }
 
     return 0;
@@ -189,7 +230,7 @@ int c64rom_load_basic(const char *rom_name)
     }
 
     /* Load Basic ROM.  */
-    if (sysfile_load(rom_name, c64memrom_basic64_rom, C64_BASIC_ROM_SIZE, C64_BASIC_ROM_SIZE) < 0) {
+    if (sysfile_load(rom_name, machine_name, c64memrom_basic64_rom, C64_BASIC_ROM_SIZE, C64_BASIC_ROM_SIZE) < 0) {
         log_error(c64rom_log, "Couldn't load basic ROM `%s'.", rom_name);
         return -1;
     }
@@ -204,7 +245,7 @@ int c64rom_load_chargen(const char *rom_name)
 
     /* Load chargen ROM.  */
 
-    if (sysfile_load(rom_name, mem_chargen_rom, C64_CHARGEN_ROM_SIZE, C64_CHARGEN_ROM_SIZE) < 0) {
+    if (sysfile_load(rom_name, machine_name, mem_chargen_rom, C64_CHARGEN_ROM_SIZE, C64_CHARGEN_ROM_SIZE) < 0) {
         log_error(c64rom_log, "Couldn't load character ROM `%s'.", rom_name);
         return -1;
     }

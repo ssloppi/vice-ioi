@@ -31,7 +31,9 @@
 #include "archdep.h"
 
 
-#ifdef HAVE_NETWORK
+#ifndef HAVE_NETWORK
+#error No HAVE_NETWORK
+#endif
 
 #ifdef AMIGA_SUPPORT
 #include "socket-amiga-drv.c"
@@ -54,5 +56,4 @@ void archdep_network_shutdown(void)
 {
     /* Nothing to be done */
 }
-#endif
 #endif

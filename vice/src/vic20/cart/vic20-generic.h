@@ -52,7 +52,7 @@ extern void generic_reset(void);
 extern void generic_config_setup(uint8_t *rawcart);
 extern int generic_bin_attach(int type, const char *filename);
 /* extern int generic_bin_attach(const char *filename, uint8_t *rawcart); */
-/* extern int generic_crt_attach(FILE *fd, uint8_t *rawcart); */
+extern int generic_crt_attach(FILE *fd, uint8_t *rawcart);
 extern void generic_detach(void);
 
 extern int generic_resources_init(void);
@@ -66,6 +66,7 @@ extern int generic_snapshot_read_module(struct snapshot_s *s);
 /* special case handling need for multiple file generic carts */
 extern int generic_attach_from_resource(int type, const char *filename);
 extern void generic_set_default(void);
+extern void generic_unset_default(void);
 extern const char *generic_get_file_name(uint16_t addr);
 
 #endif

@@ -2,6 +2,8 @@
  * \brief   Widget to control RRNet MK3 resourcs
  *
  * \author  Bas Wassink <b.wassink@ziggo.nl>
+ *
+ * \todo    Reimplement using cartimagehelper.c
  */
 
 /*
@@ -44,6 +46,28 @@
 #include "rrnetmk3widget.h"
 
 
+/** \brief  Callback for the save-dialog response handler
+ *
+ * \param[in,out]   dialog      save-file dialog
+ * \param[in,out]   filename    filename
+ * \param[in]       data        extra data (unused)
+ */
+static void save_filename_callback(GtkDialog *dialog,
+                                  gchar *filename,
+                                  gpointer data)
+{
+    if (filename != NULL) {
+        if (carthelpers_save_func(CARTRIDGE_RRNETMK3, filename) < 0) {
+            vice_gtk3_message_error("Saving failed",
+                    "Failed to save cartridge image '%s'",
+                    filename);
+        }
+        g_free(filename);
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+
 /** \brief  Handler for the "clicked" event of the "Save As" button
  *
  * \param[in]   widget      button
@@ -51,17 +75,10 @@
  */
 static void on_save_clicked(GtkWidget *widget, gpointer user_data)
 {
-    gchar *filename;
-
-    filename = vice_gtk3_save_file_dialog("Save image as", NULL, TRUE, NULL);
-    if (filename != NULL) {
-        debug_gtk3("writing RRNetMk3 image file as '%s'.", filename);
-        if (carthelpers_save_func(CARTRIDGE_RRNETMK3, filename) < 0) {
-            vice_gtk3_message_error("VICE core",
-                    "Failed to save RR-Net Mk3 image as '%s'.", filename);
-        }
-        g_free(filename);
-    }
+    vice_gtk3_save_file_dialog("Save image as",
+                               NULL, TRUE, NULL,
+                               save_filename_callback,
+                               NULL);
 }
 
 
@@ -72,7 +89,6 @@ static void on_save_clicked(GtkWidget *widget, gpointer user_data)
  */
 static void on_flush_clicked(GtkWidget *widget, gpointer user_data)
 {
-    debug_gtk3("flushing RRNetMk3 image.");
     if (carthelpers_flush_func(CARTRIDGE_RRNETMK3) < 0) {
         vice_gtk3_message_error("VICE core",
                 "Failed to flush RR-Net Mk3 image.");
@@ -82,7 +98,7 @@ static void on_flush_clicked(GtkWidget *widget, gpointer user_data)
 
 /** \brief  Create widget to control RRNet Mk3 resources
  *
- * \param[in]   parent  parent widget
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -94,9 +110,7 @@ GtkWidget *rrnetmk3_widget_create(GtkWidget *parent)
     GtkWidget *save_button;
     GtkWidget *flush_button;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 8);
 
     flash_jumper = vice_gtk3_resource_check_button_new(
             "RRNETMK3_flashjumper", "Enable flash jumper");
@@ -115,7 +129,7 @@ GtkWidget *rrnetmk3_widget_create(GtkWidget *parent)
             NULL);
 
     /* Flush image now */
-    flush_button = gtk_button_new_with_label("Flush image now");
+    flush_button = gtk_button_new_with_label("Save image now");
     gtk_grid_attach(GTK_GRID(grid), flush_button, 1, 2, 1, 1);
     g_signal_connect(flush_button, "clicked", G_CALLBACK(on_flush_clicked),
             NULL);

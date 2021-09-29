@@ -1308,9 +1308,13 @@ void ata_image_attach(ata_drive_t *drv, char *filename, ata_drive_type_t type, a
 
     if (drv->file) {
         if (drv->atapi) {
-            log_message(drv->log, "Attached `%s' %u sectors total.", drv->filename, drv->geometry.size);
+            log_message(drv->log, "Attached `%s' %u sectors total.",
+                    drv->filename, (unsigned int)drv->geometry.size);
         } else {
-            log_message(drv->log, "Attached `%s' %i/%i/%i CHS geometry, %u sectors total.", drv->filename, drv->geometry.cylinders, drv->geometry.heads, drv->geometry.sectors, drv->geometry.size);
+            log_message(drv->log,
+                    "Attached `%s' %i/%i/%i CHS geometry, %u sectors total.",
+                    drv->filename, drv->geometry.cylinders, drv->geometry.heads,
+                    drv->geometry.sectors, (unsigned int)drv->geometry.size);
         }
     } else {
         if (drv->filename && drv->filename[0] && drv->type != ATA_DRIVE_NONE) {
@@ -1371,9 +1375,9 @@ int ata_register_dump(ata_drive_t *drv)
 int ata_snapshot_write_module(ata_drive_t *drv, snapshot_t *s)
 {
     snapshot_module_t *m;
-    uint32_t spindle_clk = CLOCK_MAX;
-    uint32_t head_clk = CLOCK_MAX;
-    uint32_t standby_clk = CLOCK_MAX;
+    CLOCK spindle_clk = CLOCK_MAX;
+    CLOCK head_clk = CLOCK_MAX;
+    CLOCK standby_clk = CLOCK_MAX;
     off_t pos = 0;
 
     m = snapshot_module_create(s, drv->myname,
@@ -1421,13 +1425,13 @@ int ata_snapshot_write_module(ata_drive_t *drv, snapshot_t *s)
     SMW_B(m, (uint8_t)drv->heads);
     SMW_B(m, (uint8_t)drv->sectors);
     SMW_DW(m, drv->pos);
-    SMW_DW(m, pos / drv->sector_size);
+    SMW_DW(m, (uint32_t)(pos / drv->sector_size));
     SMW_B(m, (uint8_t)drv->wcache);
     SMW_B(m, (uint8_t)drv->lookahead);
     SMW_B(m, (uint8_t)drv->busy);
-    SMW_DW(m, spindle_clk);
-    SMW_DW(m, head_clk);
-    SMW_DW(m, standby_clk);
+    SMW_CLOCK(m, spindle_clk);
+    SMW_CLOCK(m, head_clk);
+    SMW_CLOCK(m, standby_clk);
     SMW_DW(m, drv->standby);
     SMW_DW(m, drv->standby_max);
 
@@ -1439,9 +1443,9 @@ int ata_snapshot_read_module(ata_drive_t *drv, snapshot_t *s)
     uint8_t vmajor, vminor;
     snapshot_module_t *m;
     char *filename = NULL;
-    uint32_t spindle_clk;
-    uint32_t head_clk;
-    uint32_t standby_clk;
+    CLOCK spindle_clk;
+    CLOCK head_clk;
+    CLOCK standby_clk;
     int pos, type;
 
     m = snapshot_module_open(s, drv->myname, &vmajor, &vminor);
@@ -1449,16 +1453,24 @@ int ata_snapshot_read_module(ata_drive_t *drv, snapshot_t *s)
         return -1;
     }
 
-    if ((vmajor != CART_DUMP_VER_MAJOR) || (vminor != CART_DUMP_VER_MINOR)) {
+    if (!snapshot_version_is_equal(vmajor, vminor, CART_DUMP_VER_MAJOR, CART_DUMP_VER_MINOR)) {
+        snapshot_set_error(SNAPSHOT_MODULE_INCOMPATIBLE);
         snapshot_module_close(m);
         return -1;
     }
 
     SMR_STR(m, &filename);
     if (!drv->filename || strcmp(filename, drv->filename)) {
+        log_warning(drv->log, "IDE image filename mismatch. expected: %s got: %s\n",
+                    filename, drv->filename);
+    /* FIXME: this is really retarded - we should instead identify the image by
+              making a checksum instead of using the filename */
+#if 1
+        snapshot_set_error(SNAPSHOT_ATA_IMAGE_FILENAME_MISMATCH);
         lib_free(filename);
         snapshot_module_close(m);
         return -1;
+#endif
     }
     lib_free(filename);
     SMR_DW_INT(m, &type);
@@ -1532,9 +1544,9 @@ int ata_snapshot_read_module(ata_drive_t *drv, snapshot_t *s)
         drv->lookahead = 1;
     }
     SMR_B_INT(m, &drv->busy);
-    SMR_DW(m, &spindle_clk);
-    SMR_DW(m, &head_clk);
-    SMR_DW(m, &standby_clk);
+    SMR_CLOCK(m, &spindle_clk);
+    SMR_CLOCK(m, &head_clk);
+    SMR_CLOCK(m, &standby_clk);
     SMR_DW_INT(m, &drv->standby);
     SMR_DW_INT(m, &drv->standby_max);
     drv->busy &= 0x03;

@@ -35,6 +35,7 @@
 #include "kbdbuf.h"
 #include "crtc.h"
 #include "log.h"
+#include "machine.h"
 #include "mem.h"
 #include "pet.h"
 #include "petmem.h"
@@ -378,7 +379,6 @@ void petrom_checksum(void)
 {
     static uint16_t last_kernal = 0;
     static uint16_t last_editor = 0;
-    int delay;
 
     /* log_message(petrom_log, "editor checksum=%d, kernal checksum=%d",
                    (int) petres.editor_checksum,
@@ -389,11 +389,6 @@ void petrom_checksum(void)
 
     petres.rom_video = 0;
 
-    resources_get_int("AutostartDelay", &delay);
-    if (delay == 0) {
-        delay = 3; /* default */
-    }
-
     /* The length of the keyboard buffer might actually differ from 10 - in
        the 4032 and 8032 50Hz editor ROMs it is checked against different
        memory locations (0xe3 and 0x3eb) but by default (power-up) it's 10
@@ -402,39 +397,39 @@ void petrom_checksum(void)
         if (petres.kernal_checksum != last_kernal) {
             log_message(petrom_log, "Identified Kernal 4 ROM by checksum.");
         }
-        tape_init(&tapeinit4);
         if (petres.editor_checksum == PET_EDIT4B80_CHECKSUM) {
             if (petres.editor_checksum != last_editor) {
                 log_message(petrom_log, "Identified 80 columns editor by checksum.");
             }
             petres.rom_video = 80;
-            autostart_init((CLOCK)(delay * PET_PAL_RFSH_PER_SEC * PET_PAL_CYCLES_PER_RFSH),
-                           0, 0xa7, 0xc4, 0xc6, -80);
+            autostart_init(3, 0);
         } else
-        if (petres.editor_checksum == PET_EDIT4B40_CHECKSUM
-            || petres.editor_checksum == PET_EDIT4G40_CHECKSUM) {
+        if (petres.editor_checksum == PET_EDIT4G40_CHECKSUM
+            || petres.editor_checksum == PET_EDIT4B40_CHECKSUM1
+            || petres.editor_checksum == PET_EDIT4B40_CHECKSUM2) {
             if (petres.editor_checksum != last_editor) {
                 log_message(petrom_log, "Identified 40 columns editor by checksum.");
             }
             petres.rom_video = 40;
-            autostart_init((CLOCK)(delay * PET_PAL_RFSH_PER_SEC * PET_PAL_CYCLES_PER_RFSH),
-                           0, 0xa7, 0xc4, 0xc6, -40);
+            autostart_init(3, 0);
         }
+        petrom_keybuf_init();
+        tape_init(&tapeinit4);
     } else if (petres.kernal_checksum == PET_KERNAL2_CHECKSUM) {
         if (petres.kernal_checksum != last_kernal) {
             log_message(petrom_log, "Identified Kernal 2 ROM by checksum.");
         }
         petres.rom_video = 40;
-        autostart_init((CLOCK)(delay * PET_PAL_RFSH_PER_SEC * PET_PAL_CYCLES_PER_RFSH), 0,
-                       0xa7, 0xc4, 0xc6, -40);
+        autostart_init(3, 0);
+        petrom_keybuf_init();
         tape_init(&tapeinit2);
     } else if (petres.kernal_checksum == PET_KERNAL1_CHECKSUM) {
         if (petres.kernal_checksum != last_kernal) {
             log_message(petrom_log, "Identified Kernal 1 ROM by checksum.");
         }
         petres.rom_video = 40;
-        autostart_init((CLOCK)(delay * PET_PAL_RFSH_PER_SEC * PET_PAL_CYCLES_PER_RFSH), 0,
-                       0x224, 0xe0, 0xe2, -40);
+        autostart_init(3, 0);
+        petrom_keybuf_init();
         tape_init(&tapeinit1);
     } else {
         log_warning(petrom_log, "Unknown PET ROM.");
@@ -537,7 +532,7 @@ int petrom_load_chargen(void)
      */
 
     /* memset(mem_chargen_rom, 1, 0x1000); */
-    rsize = sysfile_load(petres.chargenName, mem_chargen_rom, -0x800, 0x1000);
+    rsize = sysfile_load(petres.chargenName, machine_name, mem_chargen_rom, -0x800, 0x1000);
     if (rsize < 0) {
         log_error(petrom_log,
                   "Couldn't load character ROM (%s).", petres.chargenName);
@@ -569,7 +564,7 @@ int petrom_load_basic(void)
     if (!util_check_null_string(petres.basicName)) {
         const char *name = petres.basicName;
 
-        if ((krsize = sysfile_load(name, mem_rom + 0x3000, 0x2000, 0x3000)) < 0) {
+        if ((krsize = sysfile_load(name, machine_name, mem_rom + 0x3000, 0x2000, 0x3000)) < 0) {
             log_error(petrom_log, "Couldn't load ROM `%s'.", name);
             return -1;
         }
@@ -609,14 +604,14 @@ int petrom_load_kernal(void)
        reloading the ROM the traps are installed in.  */
     /* log_warning(pet_mem_log, "Deinstalling Traps"); */
     kbdbuf_init(0, 0, 0, 0);
-    autostart_init(0, 0, 0, 0, 0, 0);
+    autostart_init(0, 0);
     tape_deinstall();
 
     /* Load Kernal ROM.  */
     if (!util_check_null_string(petres.kernalName)) {
         const char *name = petres.kernalName;
 
-        if ((krsize = sysfile_load(name, mem_rom + 0x7000, 0x1000, 0x1000)) < 0) {
+        if ((krsize = sysfile_load(name, machine_name, mem_rom + 0x7000, 0x1000, 0x1000)) < 0) {
             log_error(petrom_log, "Couldn't load ROM `%s'.", name);
             return -1;
         }
@@ -638,17 +633,16 @@ int petrom_load_editor(void)
         return 0;
     }
 
-    /* De-initialize kbd-buf, autostart and tape stuff here before
+    /* De-initialize autostart and tape stuff here before
        reloading the ROM the traps are installed in.  */
     /* log_warning(pet_mem_log, "Deinstalling Traps"); */
-    kbdbuf_init(0, 0, 0, 0);
-    autostart_init(0, 0, 0, 0, 0, 0);
+    autostart_init(0, 0);
     tape_deinstall();
 
     if (!util_check_null_string(petres.editorName)) {
         const char *name = petres.editorName;
 
-        if ((rsize = sysfile_load(name, mem_rom + 0x6000, -0x0800, 0x1000)) < 0) {
+        if ((rsize = sysfile_load(name, machine_name, mem_rom + 0x6000, -0x0800, 0x1000)) < 0) {
             log_error(petrom_log, "Couldn't load ROM `%s'.", name);
             return -1;
         }
@@ -674,7 +668,7 @@ int petrom_load_rom9(void)
     }
 
     if (!util_check_null_string(petres.mem9name)) {
-        if ((rsize = sysfile_load(petres.mem9name, mem_rom + 0x1000, -0x0800, 0x1000)) < 0) {
+        if ((rsize = sysfile_load(petres.mem9name, machine_name, mem_rom + 0x1000, -0x0800, 0x1000)) < 0) {
             log_error(petrom_log, "Couldn't load ROM `%s'.", petres.mem9name);
             return -1;
         }
@@ -704,7 +698,7 @@ int petrom_load_romA(void)
     }
 
     if (!util_check_null_string(petres.memAname)) {
-        if ((rsize = sysfile_load(petres.memAname, mem_rom + 0x2000, -0x0800, 0x1000)) < 0) {
+        if ((rsize = sysfile_load(petres.memAname, machine_name, mem_rom + 0x2000, -0x0800, 0x1000)) < 0) {
             log_error(petrom_log, "Couldn't load ROM `%s'.", petres.memAname);
             return -1;
         }
@@ -734,7 +728,7 @@ int petrom_load_romB(void)
     }
 
     if (!util_check_null_string(petres.memBname)) {
-        if ((rsize = sysfile_load(petres.memBname, mem_rom + 0x3000, -0x0800, 0x1000)) < 0) {
+        if ((rsize = sysfile_load(petres.memBname, machine_name, mem_rom + 0x3000, -0x0800, 0x1000)) < 0) {
             log_error(petrom_log, "Couldn't load ROM `%s'.",
                       petres.memBname);
             return -1;
@@ -783,7 +777,7 @@ int petrom_load_6809rom(int num)
         int maxsize = 0x10000 - startaddr;
         int minsize = (startaddr == 0xE000) ? -0x800 : -0x1000;
 
-        if ((rsize = sysfile_load(petres.h6809romName[num], mem_6809rom + startoff, minsize, maxsize)) < 0) {
+        if ((rsize = sysfile_load(petres.h6809romName[num], machine_name, mem_6809rom + startoff, minsize, maxsize)) < 0) {
             log_error(petrom_log, "Couldn't load 6809 ROM `%s'.",
                       petres.h6809romName[num]);
             return -1;
@@ -824,8 +818,6 @@ int mem_load(void)
     if (petrom_load_editor() < 0) {
         return -1;
     }
-
-    petrom_keybuf_init();
 
     if (petrom_load_rom9() < 0) {
         return -1;

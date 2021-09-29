@@ -26,79 +26,40 @@
  */
 
 #include "vice.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "archdep_atexit.h"
+/* FIXME: Probably shouldn't be doing GTK3 specific stuff in shared archdep code .. maybe? --dqh */
 
+#ifdef USE_NATIVE_GTK3
+#include <assert.h>
+#include <gtk/gtk.h>
+#include <pthread.h>
+#endif
 
-#if defined(USE_NATIVE_GTK3) && defined(WIN32_COMPILE) && !defined(__cplusplus)
-#define ATEXIT_MAX_FUNCS 64
+#include "archdep.h"
+#include "main.h"
 
-#include "debug_gtk3.h"
+#ifdef USE_NATIVE_GTK3
+#include "mainlock.h"
 
-/** \brief  List of functions registered with archdep_vice_atexit()
- *
- * The functions get called in the reverse order of which they were registered,
- * so this acts as a stack,
+/** \brief  Exit code for the main thread
  */
-static void (*atexit_functions[ATEXIT_MAX_FUNCS + 1])(void);
+static int vice_exit_code;
 
-
-/** \brief  Number of register functions in #atexit_functions
+/** \brief  Main thread
  */
-static int atexit_counter = 0;
-
+static pthread_t main_thread;
+#endif
 
 /** \brief  Register \a function to be called on exit() or return from main
  *
  * Wrapper to work around Windows not handling the C library's atexit()
- * mechanism properly
+ * mechanism properly.
  *
- * \param[in]   function    function to call at exit
- *
- * \return  0 on success, 1 on failure
- */
-int archdep_vice_atexit(void (*function)(void))
-{
-    debug_gtk3("registering function %p.", function);
-    if (atexit_counter == ATEXIT_MAX_FUNCS) {
-        debug_gtk3("ERROR: max atexit functions reached.");
-        return 1;
-    }
-
-    atexit_functions[atexit_counter] = function;
-    atexit_counter++;
-
-    return 0;
-}
-
-
-/** \brief  Wrapper around exit()
- *
- * \param[in]   excode  exit code
- */
-void archdep_vice_exit(int excode)
-{
-    const void (*f)(void);
-
-    debug_gtk3("unrolling atexit stack:");
-    /* don't check for NULL, segfaults allow backtraces in gdb */
-    while (atexit_counter > 0) {
-        atexit_counter--;
-        f = atexit_functions[atexit_counter];
-        debug_gtk3("running atexit %d: %p.", atexit_counter, f)
-        f();
-    }
-    exit(excode);
-}
-#else  /* ifdef WIN32_COMPILE */
-
-
-/** \brief  Register \a function to be called on exit() or return from main
- *
- * Wrapper to work around Windows not handling the C library's atexit()
- * mechanism properly
+ * Now also used on Windows too because 'properly' wasn't defined here,
+ * it seems to work, and we've refactored the shutdown code for multithreading.
  *
  * \param[in]   function    function to call at exit
  *
@@ -109,14 +70,64 @@ int archdep_vice_atexit(void (*function)(void))
     return atexit(function);
 }
 
+static void actually_exit(int exit_code)
+{
+    /* Some exit stuff not safe to run afer exit() is called so we do it here */
+    main_exit();
+
+    exit(exit_code);
+}
+
+#ifndef USE_NATIVE_GTK3
+
+/** \brief  Wrapper around exit()
+ */
+void archdep_vice_exit(int exit_code)
+{
+    actually_exit(exit_code);
+}
+
+#else /* #ifndef USE_NATIVE_GTK3 */
+
+/*
+ * GTK3 needs a more controlled shutdown due to the multiple threads involved.
+ * In particular, it's tricky to synchronously shut down rendering threads as
+ * certain OpenGL calls can block if the main thread is blocked (either that, or
+ * if certain UI resources are destroyed, i'm not sure which at this point --dqh)
+ */
+
+static gboolean exit_on_main_thread(gpointer not_used)
+{
+    actually_exit(vice_exit_code);
+
+    return FALSE;
+}
+
+void archdep_set_main_thread()
+{
+    main_thread = pthread_self();
+}
 
 /** \brief  Wrapper around exit()
  *
- * \param[in]   excode  exit code
+ * \param[in]   exit_code   exit code
  */
-void archdep_vice_exit(int excode)
+void archdep_vice_exit(int exit_code)
 {
-    exit(excode);
+    vice_exit_code = exit_code;
+
+    if (pthread_equal(pthread_self(), main_thread)) {
+        /* The main thread is calling this, we can shut down directly */
+        actually_exit(exit_code);
+    } else {
+        /* We need the main thread to process the exit handling. */
+        gdk_threads_add_timeout(0, exit_on_main_thread, NULL);
+
+        if (mainlock_is_vice_thread()) {
+            /* The vice thread should shut itself down so that archdep_vice_exit does not return */
+            mainlock_initiate_shutdown();            
+        }
+    }
 }
 
-#endif
+#endif /* #ifndef USE_NATIVE_GTK3 */

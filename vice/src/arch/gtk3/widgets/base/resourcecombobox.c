@@ -33,7 +33,6 @@
 #include <string.h>
 
 #include "basewidget_types.h"
-#include "debug_gtk3.h"
 #include "lib.h"
 #include "log.h"
 #include "resourcehelpers.h"
@@ -125,7 +124,6 @@ static gboolean set_combo_int_id(GtkComboBox *combo, int id)
             }
         } while (gtk_tree_model_iter_next(model, &iter));
     }
-    debug_gtk3("ID %d not found.", id);
     return FALSE;
 }
 
@@ -134,7 +132,7 @@ static gboolean set_combo_int_id(GtkComboBox *combo, int id)
  *
  * Frees the heap-allocated copy of the resource name
  *
- * \param[im]   combo       combo box
+ * \param[in]   combo       combo box
  * \param[in]   user_data   extra event data (unused)
  */
 static void on_combo_int_destroy(GtkWidget *combo, gpointer user_data)
@@ -147,7 +145,7 @@ static void on_combo_int_destroy(GtkWidget *combo, gpointer user_data)
  *
  * Updates the resource connected to the combo box
  *
- * \param[im]   combo       combo box
+ * \param[in]   combo       combo box
  * \param[in]   user_data   extra event data (unused)
  */
 static void on_combo_int_changed(GtkComboBox *combo, gpointer user_data)
@@ -157,9 +155,6 @@ static void on_combo_int_changed(GtkComboBox *combo, gpointer user_data)
 
     resource = resource_widget_get_resource_name(GTK_WIDGET(combo));
     if (get_combo_int_id(combo, &id)) {
-#if 0
-        debug_gtk3("setting %s to %d.", resource, id);
-#endif
         if (resources_set_int(resource, id) < 0) {
             log_error(LOG_ERR, "failed to set resource '%s' to %d\n",
                     resource, id);
@@ -172,8 +167,8 @@ static void on_combo_int_changed(GtkComboBox *combo, gpointer user_data)
 
 /** \brief  Create a combo box to control an integer resource
  *
- * \param[in]   combo   combo box
- * \param[in]   entries list of entries for the combo box
+ * \param[in,out]   combo   combo box
+ * \param[in]       entries list of entries for the combo box
  *
  * \return  GtkComboBox
  */
@@ -205,9 +200,6 @@ static GtkWidget *resource_combo_box_int_new_helper(
         current = 0;
         gtk_combo_box_set_active(GTK_COMBO_BOX(combo), 0);
     } else {
-#if 0
-        debug_gtk3("got value %d for resource '%s'.", current, resource);
-#endif
         if (!set_combo_int_id(GTK_COMBO_BOX(combo), current)) {
             /* failed to set ID, revert to first entry */
             log_error(LOG_ERR,
@@ -227,13 +219,12 @@ static GtkWidget *resource_combo_box_int_new_helper(
             combo,
             vice_gtk3_resource_combo_box_int_reset,
             vice_gtk3_resource_combo_box_int_factory,
-            vice_gtk3_resource_combo_box_int_sync,
-            vice_gtk3_resource_combo_box_int_apply);
+            vice_gtk3_resource_combo_box_int_sync);
 
 
     /* connect signal handlers */
     g_signal_connect(combo, "changed", G_CALLBACK(on_combo_int_changed), NULL);
-    g_signal_connect(combo, "destroy", G_CALLBACK(on_combo_int_destroy), NULL);
+    g_signal_connect_unlocked(combo, "destroy", G_CALLBACK(on_combo_int_destroy), NULL);
 
     gtk_widget_show(combo);
     return combo;
@@ -327,6 +318,8 @@ GtkWidget *vice_gtk3_resource_combo_box_int_new_with_label(
  *
  * \param[in,out]   widget  integer resource combo box
  * \param[in]       id      new ID for the combo box resource
+ *
+ * \return  TRUE if the new \a id was set
  */
 gboolean vice_gtk3_resource_combo_box_int_set(GtkWidget *widget, int id)
 {
@@ -349,6 +342,8 @@ gboolean vice_gtk3_resource_combo_box_int_set(GtkWidget *widget, int id)
  *
  * \param[in]   widget  integer resource combo box
  * \param[out]  dest    object to store ID
+ *
+ * \return  TRUE if the ID was properly read
  */
 gboolean vice_gtk3_resource_combo_box_int_get(GtkWidget *widget, int *dest)
 {
@@ -370,6 +365,8 @@ gboolean vice_gtk3_resource_combo_box_int_get(GtkWidget *widget, int *dest)
 /** \brief  Reset \a widget to its factory default
  *
  * \param[in,out]   widget  integer resource combo box
+ *
+ * \return  TRUE if the widget was reset to its factory value
  */
 gboolean vice_gtk3_resource_combo_box_int_factory(GtkWidget *widget)
 {
@@ -380,9 +377,6 @@ gboolean vice_gtk3_resource_combo_box_int_factory(GtkWidget *widget)
     if (resources_get_default_value(resource, &value) < 0) {
         return FALSE;
     }
-#if 0
-    debug_gtk3("resetting %s to factory value %d.", resource, value);
-#endif
     return vice_gtk3_resource_combo_box_int_set(widget, value);
 }
 
@@ -415,24 +409,10 @@ gboolean vice_gtk3_resource_combo_box_int_sync(GtkWidget *widget)
 
     resource_name = resource_widget_get_resource_name(widget);
     if (resources_get_int(resource_name, &resource_value) < 0) {
-        debug_gtk3("failed to get value of resource '%s'.", resource_name);
         return FALSE;
     }
 
     return set_combo_int_id(GTK_COMBO_BOX(widget), resource_value);
-}
-
-
-/** \brief  Update the resource with the widget's value
- *
- * \param[in,out]   widget  string resource combo box
- *
- * \return  bool
- */
-gboolean vice_gtk3_resource_combo_box_int_apply(GtkWidget *widget)
-{
-    NOT_IMPLEMENTED_WARN_ONLY();
-    return FALSE;
 }
 
 
@@ -443,12 +423,12 @@ gboolean vice_gtk3_resource_combo_box_int_apply(GtkWidget *widget)
  * Presents a combo box with strings, and uses strings for keys
  */
 
-/** \brief  Handler for the "destroy" event of the combo box
+/** \brief  Handler for the 'destroy' event of the combo box
  *
  * Frees the heap-allocated copy of the resource name
  *
- * \param[im]   combo       combo box
- * \param[in]   user_data   extra event data (unused)
+ * \param[in,out]   combo       combo box
+ * \param[in]       user_data   extra event data (unused)
  */
 static void on_combo_str_destroy(GtkWidget *combo, gpointer user_data)
 {
@@ -457,11 +437,11 @@ static void on_combo_str_destroy(GtkWidget *combo, gpointer user_data)
 }
 
 
-/** \brief  Handler for the "changed" event of the string combo box
+/** \brief  Handler for the 'changed' event of the string combo box
  *
  * Updates the resource connected to the combo box
  *
- * \param[im]   combo       combo box
+ * \param[in]   combo       combo box
  * \param[in]   user_data   extra event data (unused)
  */
 static void on_combo_str_changed(GtkWidget *combo, gpointer user_data)
@@ -471,7 +451,6 @@ static void on_combo_str_changed(GtkWidget *combo, gpointer user_data)
 
     resource = resource_widget_get_resource_name(combo);
     id_str = gtk_combo_box_get_active_id(GTK_COMBO_BOX(combo));
-    debug_gtk3("setting %s to '%s'.", resource, id_str);
     resources_set_string(resource, id_str);
 }
 
@@ -522,8 +501,7 @@ static GtkWidget *resource_combo_box_str_new_helper(
             combo,
             vice_gtk3_resource_combo_box_str_reset,
             vice_gtk3_resource_combo_box_str_factory,
-            vice_gtk3_resource_combo_box_str_sync,
-            vice_gtk3_resource_combo_box_str_apply);
+            vice_gtk3_resource_combo_box_str_sync);
 
 
     /* connect signal handlers */
@@ -559,7 +537,7 @@ GtkWidget *vice_gtk3_resource_combo_box_str_new(
 
 /** \brief  Create a combo box to control a string resource
  *
- * \param[in]   resource    resource name
+ * \param[in]   fmt         resource name, printf-style format string
  * \param[in]   entries     list of entries for the combo box
  *
  * \return  GtkComboBoxText
@@ -620,8 +598,10 @@ GtkWidget *vice_gtk3_resource_combo_box_str_new_with_label(
  *
  * Set new ID of the combo box
  *
- * \param[in,out]   combo   string resource combo box
+ * \param[in,out]   widget  string resource combo box
  * \param[in]       id      new ID of the combo box
+ *
+ * \return  TRUE if the new \a id was set
  */
 gboolean vice_gtk3_resource_combo_box_str_set(GtkWidget *widget, const char *id)
 {
@@ -645,8 +625,10 @@ gboolean vice_gtk3_resource_combo_box_str_set(GtkWidget *widget, const char *id)
  * value will be returned. On failure `FALSE` will be returned and `NULL`stored
  * in \a *dest.
  *
- * \param[in]   combo   string resource combo box
+ * \param[in]   widget  string resource combo box
  * \param[out]  dest    object to store ID
+ *
+ * \return  TRUE if the \a id was set
  */
 gboolean vice_gtk3_resource_combo_box_str_get(GtkWidget *widget, const char **dest)
 {
@@ -661,10 +643,11 @@ gboolean vice_gtk3_resource_combo_box_str_get(GtkWidget *widget, const char **de
 }
 
 
-
 /** \brief  Reset string combo box to its factory default
  *
  * \param[in,out]   widget  string resource combo box
+ *
+ * \return  TRUE if the factory default was set
  */
 gboolean vice_gtk3_resource_combo_box_str_factory(GtkWidget *widget)
 {
@@ -673,12 +656,8 @@ gboolean vice_gtk3_resource_combo_box_str_factory(GtkWidget *widget)
 
     resource = resource_widget_get_resource_name(widget);
     if (resources_get_default_value(resource, &value) < 0) {
-        debug_gtk3("failed to get factory value for resource '%s'.", resource);
         return FALSE;
     }
-#if 0
-    debug_gtk3("resetting %s to factory value '%s'.", resource, value);
-#endif
     return vice_gtk3_resource_combo_box_str_set(widget, value);
 }
 
@@ -688,6 +667,8 @@ gboolean vice_gtk3_resource_combo_box_str_factory(GtkWidget *widget)
  * Restores the state of the widget as it was when instanciated.
  *
  * \param[in,out]   widget  string resource combo box
+ *
+ * \return  TRUE if the combo box was reset
  */
 gboolean vice_gtk3_resource_combo_box_str_reset(GtkWidget *widget)
 {
@@ -703,6 +684,8 @@ gboolean vice_gtk3_resource_combo_box_str_reset(GtkWidget *widget)
  * Updates the widget state to what its resource currently is.
  *
  * \param[in,out]   widget  string resource combo box
+ *
+ * \return  TRUE if the widget was synchronized with its resource
  */
 gboolean vice_gtk3_resource_combo_box_str_sync(GtkWidget *widget)
 {
@@ -711,21 +694,7 @@ gboolean vice_gtk3_resource_combo_box_str_sync(GtkWidget *widget)
 
     resource = resource_widget_get_resource_name(widget);
     if (resources_get_string(resource, &current) < 0) {
-        debug_gtk3("failed to get value for resource '%s'.", resource);
         return FALSE;
     }
     return vice_gtk3_resource_combo_box_str_set(widget, current);
-}
-
-
-/** \brief  Update the resource with the widget's value
- *
- * \param[in,out]   widget  string resource combo box
- *
- * \return  bool
- */
-gboolean vice_gtk3_resource_combo_box_str_apply(GtkWidget *widget)
-{
-    NOT_IMPLEMENTED_WARN_ONLY();
-    return FALSE;
 }

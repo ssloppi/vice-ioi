@@ -51,7 +51,7 @@ void iec_update_ports(void)
     unsigned int unit;
 
     iecbus.cpu_port = iecbus.cpu_bus;
-    for (unit = 4; unit < 8 + DRIVE_NUM; unit++) {
+    for (unit = 4; unit < 8 + NUM_DISK_UNITS; unit++) {
         iecbus.cpu_port &= iecbus.drv_bus[unit];
     }
 
@@ -84,7 +84,10 @@ iecbus_t *iecbus_drive_port(void)
     return &iecbus;
 }
 
-/* This function is called from ui_update_menus() */
+/* This function is called from ui_update_menus()
+ *
+ * Not anymore
+ */
 int iec_available_busses(void)
 {
     return IEC_BUS_IEC;
@@ -108,4 +111,13 @@ void plus4tcbm_update_pb(uint8_t byte, unsigned int dnr)
 
 void plus4tcbm_update_pc(uint8_t byte, unsigned int dnr)
 {
+}
+
+void parallel_cable_drive_write(int port, uint8_t data, int handshake, unsigned int dnr)
+{
+}
+
+uint8_t parallel_cable_drive_read(int port, int handshake)
+{
+    return 0;
 }

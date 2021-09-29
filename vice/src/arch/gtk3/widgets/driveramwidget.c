@@ -59,9 +59,7 @@
 
 #include <gtk/gtk.h>
 
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
+#include "vice_gtk3.h"
 #include "resources.h"
 #include "drive.h"
 #include "drive-check.h"
@@ -69,12 +67,15 @@
 
 #include "driveramwidget.h"
 
+
+/** \brief  Enum for RAM slabs
+ */
 enum {
-    RAM2000_INDEX = 1,
-    RAM4000_INDEX,
-    RAM6000_INDEX,
-    RAM8000_INDEX,
-    RAMA000_INDEX
+    RAM2000_INDEX = 1,  /**< RAM at $2000 */
+    RAM4000_INDEX,      /**< RAM at $4000 */
+    RAM6000_INDEX,      /**< RAM at $6000 */
+    RAM8000_INDEX,      /**< RAM at $8000 */
+    RAMA000_INDEX       /**< RAM at $A000 */
 };
 
 
@@ -99,13 +100,22 @@ static GtkWidget *create_ram_check_button(int unit, unsigned int base)
 }
 
 
+/** \brief  Create extra drive RAM widget
+ *
+ * \param[in]   unit    drive unit (8-11)
+ *
+ * \return  GtkGrid
+ */
 GtkWidget *drive_ram_widget_create(int unit)
 {
     GtkWidget *grid;
     unsigned int base;
     int row;
+    GtkWidget *label;
 
-    grid = uihelpers_create_grid_with_label("RAM expansions", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, 0, "RAM expansions", 1);
+    label = gtk_grid_get_child_at(GTK_GRID(grid), 0, 0);
+    g_object_set(label, "margin-bottom", 8, NULL);
     g_object_set_data(G_OBJECT(grid), "UnitNumber", GINT_TO_POINTER(unit));
 
     row = 1;

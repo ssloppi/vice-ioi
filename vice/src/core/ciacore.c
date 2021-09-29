@@ -43,7 +43,6 @@
 #include <string.h>
 
 #include "cia.h"
-#include "clkguard.h"
 #include "ciatimer.h"
 #include "interrupt.h"
 #include "lib.h"
@@ -241,42 +240,6 @@ static void cia_do_set_int(cia_context_t *cia_context, CLOCK rclk)
     cia_context->irqflags |= 0x80;
 }
 
-/* ------------------------------------------------------------------------- */
-
-static void ciacore_clk_overflow_callback(CLOCK sub, void *data)
-{
-    cia_context_t *cia_context;
-
-    cia_context = (cia_context_t *)data;
-
-    if (cia_context->enabled == 0) {
-        return;
-    }
-
-    /* we assume that sub has already been substracted from myclk */
-    cia_update_ta(cia_context, *(cia_context->clk_ptr) + sub);
-    cia_update_tb(cia_context, *(cia_context->clk_ptr) + sub);
-
-    ciat_prevent_clock_overflow(cia_context->ta, sub);
-    ciat_prevent_clock_overflow(cia_context->tb, sub);
-
-    if (cia_context->rdi > sub) {
-        cia_context->rdi -= sub;
-    } else {
-        cia_context->rdi = 0;
-    }
-
-    if (cia_context->read_clk > sub) {
-        cia_context->read_clk -= sub;
-    } else {
-        cia_context->read_clk = 0;
-    }
-
-    if (cia_context->todclk) {
-        cia_context->todclk -= sub;
-    }
-}
-
 /* -------------------------------------------------------------------------- */
 void ciacore_disable(cia_context_t *cia_context)
 {
@@ -321,8 +284,10 @@ void ciacore_reset(cia_context_t *cia_context)
 
     my_set_int(cia_context, 0, *(cia_context->clk_ptr));
 
-    cia_context->old_pa = 0;
-    cia_context->old_pb = 0;
+    /* these must be 0xff, or programs relying on the initial value may not
+       work correctly, see bug #1143 */
+    cia_context->old_pa = 0xff;
+    cia_context->old_pb = 0xff;
 
     (cia_context->do_reset_cia)(cia_context);
     cia_context->enabled = 1;
@@ -840,153 +805,68 @@ uint8_t cia_read_(cia_context_t *cia_context, uint16_t addr)
     return (cia_context->c_cia[addr]);
 }
 
+/* FIXME: this function should return the current state of the registers
+          without affecting the state of the emulation. */
 uint8_t ciacore_peek(cia_context_t *cia_context, uint16_t addr)
 {
-    /* This code assumes that update_cia is a projector - called at
-     * the same cycle again it doesn't change anything. This way
-     * it does not matter if we call it from peek first in the monitor
-     * and probably the same cycle again when the CPU runs on...
-     */
-    CLOCK rclk;
-    uint8_t byte;
+    uint8_t ret;
 
     addr &= 0xf;
 
-    if (cia_context->pre_peek != NULL) {
-        (cia_context->pre_peek)();
+    switch (addr) {
+        /* reading the ports should have no side effects, we do however have
+           to use the read function to update the port lines.
+        */
+        case CIA_PRA:
+        case CIA_PRB:
+        /* reading the DDR should have no side effects */
+        case CIA_DDRA:
+        case CIA_DDRB:
+        /* reading the timer values should have no side effects, we do however
+           have to use the read function to update the timers
+        */
+        case CIA_TAL:
+        case CIA_TAH:
+        case CIA_TBL:
+        case CIA_TBH:
+            ret = ciacore_read(cia_context, addr);
+            break;
+        /* reading the hours and tenth secs latches/unlatches the TOD, so we
+           directly return the counter values here */
+        case CIA_TOD_TEN:
+        case CIA_TOD_SEC:
+        case CIA_TOD_MIN:
+        case CIA_TOD_HR:
+            ret = cia_context->c_cia[addr];
+            break;
+        /* Serial Port Shift Register 
+         * FIXME: does reading SDR have side effects? do we need to update it?
+         */
+        case CIA_SDR:
+            ret = cia_context->c_cia[CIA_SDR];
+            break;
+        /* reading ICR will clear it
+         * FIXME: this is likely broken
+         */
+        case CIA_ICR:
+            ret = cia_context->irqflags;
+            break;
+        /* reading the control registers should have no side effects, we do however
+           have to use the read function to update the timers for bit 0
+        */
+        case CIA_CRA:
+        case CIA_CRB:
+            ret = ciacore_read(cia_context, addr);
+            break;
     }
 
-    rclk = *(cia_context->clk_ptr) - READ_OFFSET;
-
-    switch (addr) {
-        case CIA_PRA:           /* port A */
-            /* WARNING: this pin reads the voltage of the output pins, not
-               the ORA value. Value read might be different from what is
-               expected due to excessive load. */
-            return (cia_context->read_ciapa)(cia_context);
-            break;
-        case CIA_PRB:           /* port B */
-            /* WARNING: this pin reads the voltage of the output pins, not
-               the ORA value. Value read might be different from what is
-               expected due to excessive load. */
-            byte = (cia_context->read_ciapb)(cia_context);
-            /* (cia_context->pulse_ciapc)(rclk); */
-            if ((cia_context->c_cia[CIA_CRA] | cia_context->c_cia[CIA_CRB]) & 0x02) {
-                if (cia_context->c_cia[CIA_CRA] & 0x02) {
-                    cia_update_ta(cia_context, rclk);
-                    byte &= 0xbf;
-                    if (((cia_context->c_cia[CIA_CRA] & 0x04) ? cia_context->tat
-                         : ciat_is_underflow_clk(cia_context->ta, rclk))) {
-                        byte |= 0x40;
-                    }
-                }
-                if (cia_context->c_cia[CIA_CRB] & 0x02) {
-                    cia_update_tb(cia_context, rclk);
-                    byte &= 0x7f;
-                    if (((cia_context->c_cia[CIA_CRB] & 0x04) ? cia_context->tbt
-                         : ciat_is_underflow_clk(cia_context->tb, rclk))) {
-                        byte |= 0x80;
-                    }
-                }
-            }
-            return byte;
-            break;
-        /* Timers */
-        case CIA_TAL:           /* timer A low */
-            cia_update_ta(cia_context, rclk);
-            return ciat_read_timer(cia_context->ta, rclk) & 0xff;
-            break;
-
-        case CIA_TAH:           /* timer A high */
-            cia_update_ta(cia_context, rclk);
-            return (ciat_read_timer(cia_context->ta, rclk) >> 8) & 0xff;
-            break;
-
-        case CIA_TBL:           /* timer B low */
-            cia_update_tb(cia_context, rclk);
-            return ciat_read_timer(cia_context->tb, rclk) & 0xff;
-            break;
-
-        case CIA_TBH:           /* timer B high */
-            cia_update_tb(cia_context, rclk);
-            return (ciat_read_timer(cia_context->tb, rclk) >> 8) & 0xff;
-            break;
-
-        /*
-         * TOD clock is latched by reading Hours, and released
-         * upon reading Tenths of Seconds. The counter itself
-         * keeps ticking all the time.
-         * Also note that this latching is different from the input one.
-         */
-        case CIA_TOD_TEN: /* Time Of Day clock 1/10 s */
-        case CIA_TOD_SEC: /* Time Of Day clock sec */
-        case CIA_TOD_MIN: /* Time Of Day clock min */
-        case CIA_TOD_HR:  /* Time Of Day clock hour */
-            if (cia_context->todlatched) {
-                return cia_context->todlatch[addr - CIA_TOD_TEN];
-            }
-            return cia_context->c_cia[addr];
-
-        case CIA_SDR:           /* Serial Port Shift Register */
-            (cia_context->read_sdr)(cia_context);
-            return cia_context->c_cia[CIA_SDR];
-            break;
-
-        /* Interrupts */
-
-        case CIA_ICR:           /* Interrupt Flag Register */
-            {
-                uint8_t t = 0;
-
-                CIAT_LOGIN(("peek_icr: rclk=%d, rdi=%d", rclk, cia_context->rdi));
-
-                /* cia_context->rdi = rclk; */
-
-                cia_update_ta(cia_context, rclk);
-                cia_update_tb(cia_context, rclk);
-
-                /* read_ciaicr(); */
-
-#ifdef CIA_TIMER_DEBUG
-                if (cia_context->debugFlag) {
-                    log_message(cia_context->log,
-                                "cia read intfl: rclk=%d, alarm_ta=%d, alarm_tb=%d, ciaint=%02x",
-                                rclk, cia_tai, cia_tbi, (int)(cia_context->irqflags));
-                }
-#endif
-
-                ciat_set_alarm(cia_context->ta, rclk);
-                ciat_set_alarm(cia_context->tb, rclk);
-
-                CIAT_LOG(("peek_icr -> ta alarm at %d, tb at %d",
-                          ciat_alarm_clk(cia_context->ta),
-                          ciat_alarm_clk(cia_context->tb)));
-
-                t = cia_context->irqflags;
-
-                CIAT_LOG(("peek intfl gives ciaint=%02x -> %02x "
-                          "sr_bits=%d, rclk=%d",
-                          cia_context->irqflags, t, cia_context->sr_bits, rclk));
-/*
-            cia_context->irqflags = 0;
-            my_set_int(0, rclk + 1);
-*/
-                CIAT_LOGOUT((""));
-
-                return (t);
-            }
-        case CIA_CRA:           /* Control Register A */
-            cia_update_ta(cia_context, rclk);
-            return (cia_context->c_cia[CIA_CRA] & 0xfe) | ciat_is_running(cia_context->ta, rclk);
-            break;
-
-        case CIA_CRB:           /* Control Register B */
-            cia_update_tb(cia_context, rclk);
-            return (cia_context->c_cia[CIA_CRB] & 0xfe) | ciat_is_running(cia_context->tb, rclk);
-            break;
-    }                           /* switch */
-
-    return (cia_context->c_cia[addr]);
+    /* FIXME: perhaps we need to restore some of the state from before reading.
+     *        needs testing.
+     * NOTE:  cia_context->last_read is only used to handle RMW instructions,
+     *        since we only ever call this function in between instructions,
+     *        we dont have to restore it's value.
+     */
+    return ret;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -1330,7 +1210,7 @@ static void ciacore_idle(CLOCK offset, void *data)
 #endif
 
 void ciacore_init(cia_context_t *cia_context, alarm_context_t *alarm_context,
-                  interrupt_cpu_status_t *int_status, clk_guard_t *clk_guard)
+                  interrupt_cpu_status_t *int_status)
 {
     char *buffer;
 
@@ -1345,7 +1225,8 @@ void ciacore_init(cia_context_t *cia_context, alarm_context_t *alarm_context,
     cia_context->idle_alarm = alarm_new(alarm_context, buffer, ciacore_idle,
                                         (void *)cia_context);
     lib_free(buffer);
-    alarm_set(cia_context->idle_alarm, *(cia_context->clk_ptr) + CIA_MAX_IDLE_CYCLES);
+    alarm_set(cia_context->idle_alarm,
+              *(cia_context->clk_ptr) + CIA_MAX_IDLE_CYCLES);
 #endif
     buffer = lib_msprintf("%s_TA", cia_context->myname);
     cia_context->ta_alarm = alarm_new(alarm_context, buffer, ciacore_intta,
@@ -1364,9 +1245,6 @@ void ciacore_init(cia_context_t *cia_context, alarm_context_t *alarm_context,
 
     cia_context->int_num
         = interrupt_cpu_status_int_new(int_status, cia_context->myname);
-
-    clk_guard_add_callback(clk_guard, ciacore_clk_overflow_callback,
-                           cia_context);
 
     buffer = lib_msprintf("%s_TA", cia_context->myname);
     ciat_init(cia_context->ta, buffer, *(cia_context->clk_ptr),
@@ -1456,7 +1334,7 @@ void ciacore_shutdown(cia_context_t *cia_context)
 int ciacore_snapshot_write_module(cia_context_t *cia_context, snapshot_t *s)
 {
     snapshot_module_t *m;
-    int byte;
+    uint8_t byte;
 
     cia_update_ta(cia_context, *(cia_context->clk_ptr));
     cia_update_tb(cia_context, *(cia_context->clk_ptr));
@@ -1523,7 +1401,7 @@ int ciacore_snapshot_write_module(cia_context_t *cia_context, snapshot_t *s)
     } else {
         byte = 0;
     }
-    SMW_B(m, (uint8_t)(byte));
+    SMW_B(m, byte);
 
     SMW_B(m, (uint8_t)((cia_context->todlatched ? 1 : 0)
                     | (cia_context->todstopped ? 2 : 0)));
@@ -1532,7 +1410,7 @@ int ciacore_snapshot_write_module(cia_context_t *cia_context, snapshot_t *s)
     SMW_B(m, cia_context->todlatch[2]);
     SMW_B(m, cia_context->todlatch[3]);
 
-    SMW_DW(m, (cia_context->todclk - *(cia_context->clk_ptr)));
+    SMW_CLOCK(m, (cia_context->todclk - *(cia_context->clk_ptr)));
 
     ciat_save_snapshot(cia_context->ta, *(cia_context->clk_ptr), m,
                        (CIA_DUMP_VER_MAJOR << 8) | CIA_DUMP_VER_MINOR);
@@ -1555,7 +1433,7 @@ int ciacore_snapshot_read_module(cia_context_t *cia_context, snapshot_t *s)
 {
     uint8_t vmajor, vminor;
     uint8_t byte;
-    uint32_t dword;
+    CLOCK qword;
     CLOCK rclk = *(cia_context->clk_ptr);
     snapshot_module_t *m;
     uint16_t cia_tal, cia_tbl, cia_tac, cia_tbc;
@@ -1655,8 +1533,8 @@ int ciacore_snapshot_read_module(cia_context_t *cia_context, snapshot_t *s)
     SMR_B(m, &(cia_context->todlatch[2]));
     SMR_B(m, &(cia_context->todlatch[3]));
 
-    SMR_DW(m, &dword);
-    cia_context->todclk = *(cia_context->clk_ptr) + dword;
+    SMR_CLOCK(m, &qword);
+    cia_context->todclk = *(cia_context->clk_ptr) + qword;
     alarm_set(cia_context->tod_alarm, cia_context->todclk);
 
     /* timer switch-on code from store_cia[CIA_CRA/CRB] */
@@ -1715,20 +1593,77 @@ int ciacore_snapshot_read_module(cia_context_t *cia_context, snapshot_t *s)
 
 int ciacore_dump(cia_context_t *cia_context)
 {
-    mon_out("ICR: %02x CTRLA: %02x CTRLB: %02x\n\n", ciacore_peek(cia_context, 0x0d), ciacore_peek(cia_context, 0x0e), ciacore_peek(cia_context, 0x0f));
-    mon_out("ICR write: %02x Timer A IRQ: %s Timer B IRQ: %s TOD IRQ: %s Serial IRQ: %s Cassette IRQ: %s\n\n",
-        cia_context->c_cia[CIA_ICR],
-        (cia_context->c_cia[CIA_ICR] & 1) ? "on" : "off",
-        (cia_context->c_cia[CIA_ICR] & (1<<1)) ? "on" : "off",
-        (cia_context->c_cia[CIA_ICR] & (1<<2)) ? "on" : "off",
-        (cia_context->c_cia[CIA_ICR] & (1<<3)) ? "on" : "off",
-        (cia_context->c_cia[CIA_ICR] & (1<<4)) ? "on" : "off");
-    mon_out("Port A:  %02x DDR: %02x\n", ciacore_peek(cia_context, 0x00), ciacore_peek(cia_context, 0x02));
-    mon_out("Port B:  %02x DDR: %02x\n", ciacore_peek(cia_context, 0x01), ciacore_peek(cia_context, 0x03));
-    mon_out("Timer A: %04x (latched %04x)\n", ciacore_peek(cia_context, 0x04) + (ciacore_peek(cia_context, 0x05) << 8), cia_context->ta->latch);
-    mon_out("Timer B: %04x (latched %04x)\n", ciacore_peek(cia_context, 0x06) + (ciacore_peek(cia_context, 0x07) << 8), cia_context->tb->latch);
-    mon_out("TOD Time:  %02x:%02x:%02x.%x (%s)\n", ciacore_peek(cia_context, 0x0b) & 0x7f, ciacore_peek(cia_context, 0x0a), ciacore_peek(cia_context, 0x09), ciacore_peek(cia_context, 0x08), ciacore_peek(cia_context, 0x0b) & 0x80 ? "pm" : "am");
-    mon_out("TOD Alarm: %02x:%02x:%02x.%x (%s)\n", cia_context->todalarm[0x0b - CIA_TOD_TEN] & 0x7f, cia_context->todalarm[0x0a - CIA_TOD_TEN], cia_context->todalarm[0x09 - CIA_TOD_TEN], cia_context->todalarm[0x08 - CIA_TOD_TEN], cia_context->todalarm[0x0b - CIA_TOD_TEN] & 0x80 ? "pm" : "am");
-    mon_out("\nSynchronous Serial I/O Data Buffer: %02x\n", ciacore_peek(cia_context, 0x0c));
+    char *s;
+    mon_out("ICR: %02x (written: %02x)  CTRLA: %02x  CTRLB: %02x\n",
+            ciacore_peek(cia_context, 0x0d),
+            cia_context->c_cia[CIA_ICR],
+            ciacore_peek(cia_context, 0x0e),
+            ciacore_peek(cia_context, 0x0f));
+
+    mon_out("\nPort A: %02x  DDR: %02x\n",
+            ciacore_peek(cia_context, 0x00),
+            ciacore_peek(cia_context, 0x02));
+    mon_out("Port B: %02x  DDR: %02x\n",
+            ciacore_peek(cia_context, 0x01),
+            ciacore_peek(cia_context, 0x03));
+
+    mon_out("\nTimer A IRQ: %s  running: %s  mode: %s\n",
+            (cia_context->c_cia[CIA_ICR] & 1) ? "on" : "off",
+            ciacore_peek(cia_context, 0x0e) & 1 ? "yes" : "no",
+            ciacore_peek(cia_context, 0x0e) & (1 << 3) ? "one-shot" : "continues");
+    mon_out("Timer A counts: %s  PB6 output: %s (%s)\n",
+            ciacore_peek(cia_context, 0x0e) & (1 << 5) ? "CNT transitions" : "System clock",
+            ciacore_peek(cia_context, 0x0e) & (1 << 1) ? "yes" : "no",
+            ciacore_peek(cia_context, 0x0e) & (1 << 2) ? "Toggle" : "Pulse");
+    mon_out("Timer A: %04x (latched %04x)\n",
+            (unsigned int)(ciacore_peek(cia_context, 0x04) + (ciacore_peek(cia_context, 0x05) << 8)),
+            cia_context->ta->latch);
+
+    mon_out("Timer B IRQ: %s  running: %s  mode: %s\n",
+            (cia_context->c_cia[CIA_ICR] & (1 << 1)) ? "on" : "off",
+            ciacore_peek(cia_context, 0x0f) & 1 ? "yes" : "no",
+            ciacore_peek(cia_context, 0x0f) & (1 << 3) ? "one-shot" : "continues");
+    switch (ciacore_peek(cia_context, 0x0f) & (3 << 5)) {
+        default:
+        case (0 << 5): s = "System clock"; break;
+        case (1 << 5): s = "CNT transitions"; break;
+        case (2 << 5): s = "Timer A undeflows"; break;
+        case (3 << 5): s = "Timer A undeflows with CNT"; break;
+    }
+    mon_out("Timer B counts: %s  PB7 output: %s (%s)\n",
+            s,
+            ciacore_peek(cia_context, 0x0f) & (1 << 1) ? "yes" : "no",
+            ciacore_peek(cia_context, 0x0f) & (1 << 2) ? "Toggle" : "Pulse");
+    mon_out("Timer B: %04x (latched %04x)\n",
+            (unsigned int)(ciacore_peek(cia_context, 0x06) + (ciacore_peek(cia_context, 0x07) << 8)),
+            cia_context->tb->latch);
+
+    mon_out("\nTOD IRQ: %s  latched: %s  running: %s  mode: %sHz\n",
+            (cia_context->c_cia[CIA_ICR] & (1<<2)) ? "on" : "off",
+            cia_context->todlatched ? "yes" : "no",
+            cia_context->todstopped ? "no" : "yes",
+            ciacore_peek(cia_context, 0x0e) & (1 << 7) ? "50" : "60");
+    mon_out("TOD Time:  %02x:%02x:%02x.%x (%s)\n",
+            ciacore_peek(cia_context, 0x0b) & 0x7fU,
+            ciacore_peek(cia_context, 0x0a),
+            ciacore_peek(cia_context, 0x09),
+            ciacore_peek(cia_context, 0x08),
+            ciacore_peek(cia_context, 0x0b) & 0x80 ? "pm" : "am");
+    mon_out("TOD Alarm: %02x:%02x:%02x.%x (%s)\n",
+            cia_context->todalarm[0x0b - CIA_TOD_TEN] & 0x7fU,
+            cia_context->todalarm[0x0a - CIA_TOD_TEN],
+            cia_context->todalarm[0x09 - CIA_TOD_TEN],
+            cia_context->todalarm[0x08 - CIA_TOD_TEN],
+            cia_context->todalarm[0x0b - CIA_TOD_TEN] & 0x80 ? "pm" : "am");
+
+    mon_out("\nShift Register IRQ: %s  mode: %s\n",
+            (cia_context->c_cia[CIA_ICR] & (1<<3)) ? "on" : "off",
+            ciacore_peek(cia_context, 0x0e) & (1 << 6) ? "output" : "input");
+    mon_out("Shift Register Data Buffer: %02x\n",
+            ciacore_peek(cia_context, 0x0c));
+
+    mon_out("\nFLAG1 IRQ: %s\n",
+            (cia_context->c_cia[CIA_ICR] & (1<<4)) ? "on" : "off");
+
     return 0;
 }

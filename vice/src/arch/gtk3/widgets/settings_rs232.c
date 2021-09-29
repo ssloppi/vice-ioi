@@ -4,19 +4,23 @@
  * \author  Bas Wassink <b.wassink@ziggo.nl>
  */
 
-/**
+/*
  * $VICERES Acia1Enable     x64 x64sc xscpu64 x128 xvic
  * $VICERES Acia1Dev        x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  * $VICERES Acia1Base       x64 x64sc xscpu64 x128 xvic
  * $VICERES Acia1Irq        x64 x64sc xscpu64 x128 xvic
  * $VICERES Acia1Mode       x64 x64sc xscpu64 x128 xvic
- * $VICERES RsUserEnable    x64 x64sc xscpu64 x128 xvic
+ * $VICERES UserportDevice  x64 x64sc xscpu64 x128 xvic
  * $VICERES RsUserBaud      x64 x64sc xscpu64 x128 xvic
  * $VICERES RsUserDev       x64 x64sc xscpu64 x128 xvic
  * $VICERES RsDevice1       x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  * $VICERES RsDevice2       x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  * $VICERES RsDevice3       x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  * $VICERES RsDevice4       x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
+ * $VICERES RsDevice1ip232  x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
+ * $VICERES RsDevice2ip232  x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
+ * $VICERES RsDevice3ip232  x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
+ * $VICERES RsDevice4ip232  x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  * $VICERES RsDevice1Baud   x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  * $VICERES RsDevice2Baud   x64 x64sc xscpu64 x128 xvic xplus4 xcbm5x0 xcbm2
  */
@@ -50,6 +54,7 @@
 #include "lib.h"
 #include "machine.h"
 #include "resources.h"
+#include "userport.h"
 
 #include "settings_rs232.h"
 
@@ -61,8 +66,8 @@
 static const vice_gtk3_combo_entry_int_t acia_devices[] = {
     { "Serial 1", 0 },
     { "Serial 2", 1 },
-    { "Dump to file", 2 },
-    { "Execute process", 3 },
+    { "Serial 3", 2 },
+    { "Serial 4", 3 },
     { NULL, -1 }
 };
 
@@ -99,8 +104,8 @@ static const vice_gtk3_radiogroup_entry_t acia_base_vic20[] = {
  */
 static const vice_gtk3_radiogroup_entry_t acia_irqs[] = {
     { "None",   0 },
-    { "IRQ",    1 },
-    { "NMI",    2 },
+    { "NMI",    1 },
+    { "IRQ",    2 },
     { NULL, -1 }
 };
 
@@ -393,9 +398,58 @@ static GtkWidget *create_acia_widget(void)
         row++;
     }
 
-
     gtk_widget_show_all(grid);
     return grid;
+}
+
+
+
+/** \brief  Handler for the 'toggled' event of the userport enable checkbox
+ *
+ * Set userport device to USERPORT_DEVICE_RS232 or USERPORT_DEVICE_NONE.
+ *
+ * \param[in]   self    userport enable check button
+ * \param[in]   data    extra event data (unused)
+ */
+static void on_userport_enable_toggled(GtkWidget *self, gpointer data)
+{
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(self))) {
+        /* set global userport device to rs232 modem */
+        resources_set_int("UserportDevice", USERPORT_DEVICE_RS232_MODEM);
+    } else {
+        /* set global userport device to none */
+        resources_set_int("UserportDevice", USERPORT_DEVICE_NONE);
+    }
+}
+
+
+/** \brief  Create toggle button to enable the userport rs232 device
+ *
+ * Set userport device to USERPORT_DEVICE_RS232 or USERPORT_DEVICE_NONE.
+ *
+ * The old resource "RsUserEnable" has been removed in the new userport system
+ * and we now set/unset the global "UserportDevice" resource.
+ *
+ *
+ * \return  GtkCheckButton
+ */
+static GtkWidget *create_userport_enable_widget(void)
+{
+    GtkWidget *check;
+    int device;
+
+    if (resources_get_int("UserportDevice", &device) < 0) {
+        device = USERPORT_DEVICE_NONE;
+    }
+
+    check = gtk_check_button_new_with_label("Enable userport RS232 emulation");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check),
+                                 device == USERPORT_DEVICE_RS232_MODEM);
+    g_signal_connect(check,
+                     "toggled",
+                     G_CALLBACK(on_userport_enable_toggled),
+                     NULL);
+    return check;
 }
 
 
@@ -419,8 +473,7 @@ static GtkWidget *create_userport_widget(void)
     gtk_widget_set_halign(label, GTK_ALIGN_START);
     gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 4, 1);
 
-    rsuser_enable_widget = vice_gtk3_resource_check_button_new(
-            "RsUserEnable", "Enable Userport RS232 emulation");
+    rsuser_enable_widget = create_userport_enable_widget();
     gtk_widget_set_halign(rsuser_enable_widget, GTK_ALIGN_START);
     g_object_set(rsuser_enable_widget, "margin-left", 16, NULL);
     gtk_grid_attach(GTK_GRID(grid), rsuser_enable_widget, 0, 1, 4, 1);
@@ -443,8 +496,9 @@ static GtkWidget *create_userport_widget(void)
 
 /** \brief  Create RS232 devices widget
  *
+ * XXX: only supports Unix, Windows appears do things differently.
  *
- * XXX: only supports Unix, Windows appears do things differently
+ * \return  GtkGrid
  */
 static GtkWidget *create_rs232_devices_widget(void)
 {
@@ -452,13 +506,18 @@ static GtkWidget *create_rs232_devices_widget(void)
     GtkWidget *label;
     GtkWidget *ser1_file_widget;
     GtkWidget *ser1_baud_widget;
+    GtkWidget *ser1_ip232_widget;
     GtkWidget *ser2_file_widget;
     GtkWidget *ser2_baud_widget;
-    GtkWidget *dump_widget;
-    GtkWidget *command_widget;
+    GtkWidget *ser2_ip232_widget;
+    GtkWidget *ser3_file_widget;
+    GtkWidget *ser3_baud_widget;
+    GtkWidget *ser3_ip232_widget;
+    GtkWidget *ser4_file_widget;
+    GtkWidget *ser4_baud_widget;
+    GtkWidget *ser4_ip232_widget;
     /* ttyu[0-3] are supposedly set up on FreeBSD */
     const char *patterns_ttys[] = { "ttyS*", "ttyu*", NULL };
-    const char *patterns_dump[] = { "*", NULL };
 
     grid = vice_gtk3_grid_new_spaced(VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT);
     label = gtk_label_new(NULL);
@@ -476,6 +535,9 @@ static GtkWidget *create_rs232_devices_widget(void)
     ser1_baud_widget = create_serial_baud_widget("RsDevice1Baud");
     gtk_grid_attach(GTK_GRID(grid), label, 2, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), ser1_baud_widget, 3, 1, 1, 1);
+    ser1_ip232_widget = vice_gtk3_resource_check_button_new(
+            "RsDevice1ip232", "IP232");
+    gtk_grid_attach(GTK_GRID(grid), ser1_ip232_widget, 4, 1, 1, 1);
 
     label = create_indented_label("Serial 2");
     ser2_file_widget = vice_gtk3_resource_browser_new(
@@ -487,21 +549,37 @@ static GtkWidget *create_rs232_devices_widget(void)
     ser2_baud_widget = create_serial_baud_widget("RsDevice2Baud");
     gtk_grid_attach(GTK_GRID(grid), label, 2, 2, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), ser2_baud_widget, 3, 2, 1, 1);
+    ser2_ip232_widget = vice_gtk3_resource_check_button_new(
+            "RsDevice2ip232", "IP232");
+    gtk_grid_attach(GTK_GRID(grid), ser2_ip232_widget, 4, 2, 1, 1);
 
-
-    label = create_indented_label("Dump file");
-    dump_widget = vice_gtk3_resource_browser_new("RsDevice3",
-            patterns_dump, "All files", "Select RS232 dump file",
-            NULL, NULL);
+    label = create_indented_label("Serial 3");
+    ser3_file_widget = vice_gtk3_resource_browser_new(
+            "RsDevice3", patterns_ttys, "Serial ports",
+            "Select serial port", NULL, NULL);
     gtk_grid_attach(GTK_GRID(grid), label, 0, 3, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), dump_widget, 1, 3, 3, 1);
+    gtk_grid_attach(GTK_GRID(grid), ser3_file_widget, 1, 3, 1, 1);
+    label = gtk_label_new("Baud");
+    ser3_baud_widget = create_serial_baud_widget("RsDevice3Baud");
+    gtk_grid_attach(GTK_GRID(grid), label, 2, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), ser3_baud_widget, 3, 3, 1, 1);
+    ser3_ip232_widget = vice_gtk3_resource_check_button_new(
+            "RsDevice3ip232", "IP232");
+    gtk_grid_attach(GTK_GRID(grid), ser3_ip232_widget, 4, 3, 1, 1);
 
-    label = create_indented_label("Command");
-    command_widget = vice_gtk3_resource_entry_full_new("RsDevice4");
+    label = create_indented_label("Serial 4");
+    ser4_file_widget = vice_gtk3_resource_browser_new(
+            "RsDevice4", patterns_ttys, "Serial ports",
+            "Select serial port", NULL, NULL);
     gtk_grid_attach(GTK_GRID(grid), label, 0, 4, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), command_widget, 1, 4, 3, 1);
-
-
+    gtk_grid_attach(GTK_GRID(grid), ser4_file_widget, 1, 4, 1, 1);
+    label = gtk_label_new("Baud");
+    ser4_baud_widget = create_serial_baud_widget("RsDevice4Baud");
+    gtk_grid_attach(GTK_GRID(grid), label, 2, 4, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), ser4_baud_widget, 3, 4, 1, 1);
+    ser4_ip232_widget = vice_gtk3_resource_check_button_new(
+            "RsDevice4ip232", "IP232");
+    gtk_grid_attach(GTK_GRID(grid), ser4_ip232_widget, 4, 4, 1, 1);
 
     gtk_widget_show_all(grid);
     return grid;
@@ -512,7 +590,7 @@ static GtkWidget *create_rs232_devices_widget(void)
  *
  * Invalid for PET, C64DTV and VSID
  *
- * \param[in]   parent  parent widget
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -565,4 +643,3 @@ GtkWidget *settings_rs232_widget_create(GtkWidget *parent)
 
     return grid;
 }
-

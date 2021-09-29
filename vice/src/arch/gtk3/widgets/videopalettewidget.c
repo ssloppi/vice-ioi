@@ -15,7 +15,7 @@
  * $VICERES VDCExternalPalette      x128
  * $VICERES VICPaletteFile          xvic
  * $VICERES VICExternalPalette      xvic
- * $VICERES  VICIIPaletteFile       x64 x64sc xscpu64 xd64tv xcbm5x0
+ * $VICERES VICIIPaletteFile        x64 x64sc xscpu64 xd64tv xcbm5x0
  * $VICERES VICIIExternalPalette    x64 x64sc xscpu64 xd64tv xcbm5x0
  */
 
@@ -45,11 +45,11 @@
 #include <gtk/gtk.h>
 #include <string.h>
 
+#include "vice_gtk3.h"
 #include "debug_gtk3.h"
-#include "widgethelpers.h"
-#include "openfiledialog.h"
-#include "resources.h"
 #include "palette.h"
+#include "resources.h"
+#include "ui.h"
 
 #include "videopalettewidget.h"
 
@@ -58,10 +58,20 @@
  */
 static const char *chip_prefix = NULL;
 
-
+/** \brief  Internal palette radio button */
 static GtkWidget *radio_internal = NULL;
+
+/** \brief  External palette radio button */
 static GtkWidget *radio_external = NULL;
+
+/** \brief  External palette combo box
+ */
 static GtkWidget *combo_external = NULL;
+
+/** \brief  Browse button for custom palette files
+ *
+ * TODO:    Replace with resourcebrowser.c
+ */
 static GtkWidget *button_custom = NULL;
 
 
@@ -86,16 +96,34 @@ static void on_internal_toggled(GtkWidget *radio, gpointer data)
  */
 static void on_combo_changed(GtkComboBox *combo, gpointer user_data)
 {
-#ifdef HAVE_DEBUG_GTK3UI
-    int index = gtk_combo_box_get_active(combo);
-#endif
     const char *id = gtk_combo_box_get_active_id(combo);
 
-    debug_gtk3("got combo index %d, id '%s'.", index, id);
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio_external), TRUE);
     resources_set_string_sprintf("%sPaletteFile", id, chip_prefix);
     resources_set_int_sprintf("%sExternalPalette", 1, chip_prefix);
+}
 
+
+/** \brief  Callback for the custom palette file chooser
+ *
+ * \param[in,out]   dialog      file chooser dialog
+ * \param[in,out]   filename    palette filename (NULL to cancel)
+ * \param[in]       data        extra data (unused)
+ */
+static void browse_filename_callback(GtkDialog *dialog,
+                                     gchar *filename,
+                                     gpointer data)
+{
+    if (filename != NULL) {
+        resources_set_string_sprintf("%sPaletteFile", filename, chip_prefix);
+
+        /* add to combo box */
+        gtk_combo_box_text_insert(GTK_COMBO_BOX_TEXT(combo_external), 0,
+                filename, filename);
+        gtk_combo_box_set_active(GTK_COMBO_BOX(combo_external), 0);
+        g_free(filename);
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
 
@@ -108,22 +136,15 @@ static void on_combo_changed(GtkComboBox *combo, gpointer user_data)
  */
 static void on_browse_clicked(GtkButton *button, gpointer user_data)
 {
-    gchar *filename;
     const char *flist[] = { "*.vpl", NULL };
+    GtkWidget *dialog;
 
-    filename = vice_gtk3_open_file_dialog("Open palette file",
-            "Palette files", flist, NULL);
-    if (filename != NULL) {
-        debug_gtk3("got palette file '%s'.", filename);
-        resources_set_string_sprintf("%sPaletteFile", filename, chip_prefix);
-
-        /* add to combo box */
-        gtk_combo_box_text_insert(GTK_COMBO_BOX_TEXT(combo_external), 0,
-                filename, filename);
-        gtk_combo_box_set_active(GTK_COMBO_BOX(combo_external), 0);
-
-        g_free(filename);
-    }
+    dialog = vice_gtk3_open_file_dialog(
+            "Open palette file",
+            "Palette files", flist, NULL,
+            browse_filename_callback,
+            NULL);
+    gtk_widget_show(dialog);
 }
 
 
@@ -139,7 +160,7 @@ static GtkWidget *create_combo_box(void)
 {
     GtkWidget *combo;
     int index;
-    palette_info_t *list;
+    const palette_info_t *list;
     int row;
     const char *current;
     gboolean found = FALSE;
@@ -206,9 +227,10 @@ GtkWidget *video_palette_widget_create(const char *chip)
     chip_prefix = chip;
 
     resources_get_int_sprintf("%sExternalPalette", &external, chip);
-    debug_gtk3("%sExternalPalette is %s.", chip, external ? "ON" : "OFF");
 
-    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Palette settings", 4);
+    grid = vice_gtk3_grid_new_spaced_with_label(
+            VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT,
+            "Palette settings", 4);
 
     radio_internal = gtk_radio_button_new_with_label(group, "Internal");
     g_object_set(radio_internal, "margin-left", 16, NULL);

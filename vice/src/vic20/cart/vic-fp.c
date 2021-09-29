@@ -27,6 +27,8 @@
  *
  */
 
+#define DEBUGCART
+
 #include "vice.h"
 
 #include <stdio.h>
@@ -37,6 +39,7 @@
 #include "cartio.h"
 #include "cartridge.h"
 #include "cmdline.h"
+#include "crt.h"
 #include "export.h"
 #include "flash040.h"
 #include "lib.h"
@@ -54,6 +57,12 @@
 #include "vic20cartmem.h"
 #include "vic20mem.h"
 #include "zfile.h"
+
+#ifdef DEBUGCART
+#define DBG(x) printf x
+#else
+#define DBG(x)
+#endif
 
 /* ------------------------------------------------------------------------- */
 /*
@@ -145,18 +154,19 @@ static void vic_fp_io2_store(uint16_t addr, uint8_t value);
 static int vic_fp_mon_dump(void);
 
 static io_source_t vfp_device = {
-    CARTRIDGE_VIC20_NAME_FP,
-    IO_DETACH_CART,
-    NULL,
-    0x9800, 0x9bff, 0x3ff,
-    0,
-    vic_fp_io2_store,
-    vic_fp_io2_read,
-    vic_fp_io2_peek,
-    vic_fp_mon_dump,
-    CARTRIDGE_VIC20_FP,
-    0,
-    0
+    CARTRIDGE_VIC20_NAME_FP, /* name of the device */
+    IO_DETACH_CART,          /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,   /* does not use a resource for detach */
+    0x9800, 0x9bff, 0x01,    /* range for the device, regs:$9800-$9801, mirrors:$9802-$9bff */
+    0,                       /* read validity determined by the device upon a read */
+    vic_fp_io2_store,        /* store function */
+    NULL,                    /* NO poke function */
+    vic_fp_io2_read,         /* read function */
+    vic_fp_io2_peek,         /* peek function */
+    vic_fp_mon_dump,         /* device state information dump function */
+    CARTRIDGE_VIC20_FP,      /* cartridge ID */
+    IO_PRIO_NORMAL,          /* normal priority, device read needs to be checked for collisions */
+    0                        /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *vfp_list_item = NULL;
@@ -322,6 +332,54 @@ static int zfile_load(const char *filename, uint8_t *dest, size_t size)
     return 0;
 }
 
+int vic_fp_crt_attach(FILE *fd, uint8_t *rawcart)
+{
+    crt_chip_header_t chip;
+    int idx = 0;
+
+    if (!cart_ram) {
+        cart_ram = lib_malloc(CART_RAM_SIZE);
+    }
+    if (!cart_rom) {
+        cart_rom = lib_malloc(CART_ROM_SIZE);
+    }
+
+    /* util_string_set(&cartfile, filename); */ /* FIXME */
+
+    for (idx = 0; idx < 512; idx++) {
+        if (crt_read_chip_header(&chip, fd)) {
+            goto exiterror;
+        }
+
+        DBG(("chip %d at %02x len %02x\n", idx, chip.start, chip.size));
+        if (chip.size != 0x2000) {
+            goto exiterror;
+        }
+
+        if (crt_read_chip(&cart_rom[0x2000 * idx], 0, &chip, fd)) {
+            goto exiterror;
+        }
+    }
+
+    if (export_add(&export_res) < 0) {
+        goto exiterror;
+    }
+
+    flash040core_init(&flash_state, maincpu_alarm_context, FLASH040_TYPE_032B_A0_1_SWAP, cart_rom);
+
+    mem_cart_blocks = VIC_CART_RAM123 |
+                      VIC_CART_BLK1 | VIC_CART_BLK2 | VIC_CART_BLK3 | VIC_CART_BLK5 |
+                      VIC_CART_IO2;
+    mem_initialize_memory();
+
+    vfp_list_item = io_source_register(&vfp_device);
+
+    return CARTRIDGE_VIC20_FP;
+exiterror:
+    vic_fp_detach();
+    return -1;
+}
+
 int vic_fp_bin_attach(const char *filename)
 {
     if (!cart_ram) {
@@ -359,7 +417,7 @@ void vic_fp_detach(void)
        and cartridge wasn't from a snapshot */
     if (vic_fp_writeback && !cartridge_is_from_snapshot) {
         if (flash_state.flash_dirty) {
-            int n;
+            long n;
             FILE *fd;
 
             n = 0;

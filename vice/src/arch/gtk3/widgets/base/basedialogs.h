@@ -37,15 +37,31 @@
 /** \brief  Custom response IDs for dialogs
  */
 enum {
-    VICE_RESPONSE_AUTOSTART = 1     /**< trigger autostart */
+    VICE_RESPONSE_AUTOSTART = 1,     /**< trigger autostart */
+    VICE_RESPONSE_AUTOLOAD,          /**< trigger autoload */
+    VICE_RESPONSE_AUTOSTART_INDEX,   /**< trigger autostart with index (inside image) */
+    VICE_RESPONSE_AUTOLOAD_INDEX,    /**< trigger autoload with index (inside image) */
+    VICE_RESPONSE_CUSTOM_OPEN,       /**< custom open event */
+    VICE_RESPONSE_INVALID            /**< not a valid event, drop it */
 };
 
 
-gboolean vice_gtk3_message_info(const char *title, const char *fmt, ...);
-gboolean vice_gtk3_message_confirm(const char *title, const char *fmt, ...);
-gboolean vice_gtk3_message_error(const char *title, const char *fmt, ...);
-gboolean vice_gtk3_integer_input_box(
-        const char *title, const char *message,
-        int old_value, int *new_value,
-        int min, int max);
+GtkWidget *vice_gtk3_message_info(const char *title,
+                                  const char *fmt, ...);
+
+GtkWidget *vice_gtk3_message_confirm(void (*callback)(GtkDialog *, gboolean),
+                                     const char *title,
+                                     const char *fmt, ...);
+
+GtkWidget *vice_gtk3_message_error(const char *title,
+                                   const char *fmt, ...);
+
+GtkWidget *vice_gtk3_integer_input_box(
+        void (*callback)(GtkDialog *, int, gboolean),
+        const char *title,
+        const char *message,
+        int old_value,
+        int min,
+        int max);
+
 #endif

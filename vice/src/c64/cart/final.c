@@ -74,33 +74,35 @@ static void final_v1_io2_store(uint16_t addr, uint8_t value);
 static int final_v1_dump(void);
 
 static io_source_t final1_io1_device = {
-    CARTRIDGE_NAME_FINAL_I,
-    IO_DETACH_CART,
-    NULL,
-    0xde00, 0xdeff, 0xff,
-    1, /* read is always valid */
-    final_v1_io1_store,
-    final_v1_io1_read,
-    final_v1_io1_peek,
-    final_v1_dump,
-    CARTRIDGE_FINAL_I,
-    0,
-    0
+    CARTRIDGE_NAME_FINAL_I, /* name of the device */
+    IO_DETACH_CART,         /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,  /* does not use a resource for detach */
+    0xde00, 0xdeff, 0xff,   /* range for the device, regs:$de00-$deff */
+    1,                      /* read is always valid */
+    final_v1_io1_store,     /* store function */
+    NULL,                   /* NO poke function */
+    final_v1_io1_read,      /* read function */
+    final_v1_io1_peek,      /* peek function */
+    final_v1_dump,          /* device state information dump function */
+    CARTRIDGE_FINAL_I,      /* cartridge ID */
+    IO_PRIO_NORMAL,         /* normal priority, device read needs to be checked for collisions */
+    0                       /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_t final1_io2_device = {
-    CARTRIDGE_NAME_FINAL_I,
-    IO_DETACH_CART,
-    NULL,
-    0xdf00, 0xdfff, 0xff,
-    1, /* read is always valid */
-    final_v1_io2_store,
-    final_v1_io2_read,
-    final_v1_io2_peek,
-    final_v1_dump,
-    CARTRIDGE_FINAL_I,
-    0,
-    0
+    CARTRIDGE_NAME_FINAL_I, /* name of the device */
+    IO_DETACH_CART,         /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,  /* does not use a resource for detach */
+    0xdf00, 0xdfff, 0xff,   /* range for the device, regs:$df00-$dfff */
+    1,                      /* read is always valid */
+    final_v1_io2_store,     /* store function */
+    NULL,                   /* NO poke function */
+    final_v1_io2_read,      /* read function */
+    final_v1_io2_peek,      /* peek function */
+    final_v1_dump,          /* device state information dump function */
+    CARTRIDGE_FINAL_I,      /* cartridge ID */
+    IO_PRIO_NORMAL,         /* normal priority, device read needs to be checked for collisions */
+    0                       /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *final1_io1_list_item = NULL;
@@ -178,14 +180,14 @@ uint8_t final_v1_romh_read(uint16_t addr)
 void final_v1_freeze(void)
 {
     DBG(("freeze enable\n"));
-    cart_config_changed_slotmain(3, 3, CMODE_READ | CMODE_RELEASE_FREEZE);
+    cart_config_changed_slotmain(CMODE_ULTIMAX, CMODE_ULTIMAX, CMODE_READ | CMODE_RELEASE_FREEZE);
     final_v1_active = 1;
     cartridge_release_freeze();
 }
 
 void final_v1_config_init(void)
 {
-    cart_config_changed_slotmain(1, 1, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_16KGAME, CMODE_16KGAME, CMODE_READ);
     final_v1_active = 1;
 }
 
@@ -193,7 +195,7 @@ void final_v1_config_setup(uint8_t *rawcart)
 {
     memcpy(roml_banks, rawcart, 0x2000);
     memcpy(romh_banks, &rawcart[0x2000], 0x2000);
-    cart_config_changed_slotmain(1, 1, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_16KGAME, CMODE_16KGAME, CMODE_READ);
     final_v1_active = 1;
 }
 
@@ -259,7 +261,7 @@ void final_v1_detach(void)
    ARRAY | ROMH   |   0.0+  | 8192 BYTES of ROMH data
  */
 
-static char snap_module_name[] = "CARTFINALV1";
+static const char snap_module_name[] = "CARTFINALV1";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 
@@ -296,13 +298,13 @@ int final_v1_snapshot_read_module(snapshot_t *s)
     }
 
     /* Do not accept versions higher than current */
-    if (vmajor > SNAP_MAJOR || vminor > SNAP_MINOR) {
+    if (snapshot_version_is_bigger(vmajor, vminor, SNAP_MAJOR, SNAP_MINOR)) {
         snapshot_set_error(SNAPSHOT_MODULE_HIGHER_VERSION);
         goto fail;
     }
 
     /* new in 0.1 */
-    if (SNAPVAL(vmajor, vminor, 0, 1)) {
+    if (!snapshot_version_is_smaller(vmajor, vminor, 0, 1)) {
         if (SMR_B_INT(m, &final_v1_active) < 0) {
             goto fail;
         }

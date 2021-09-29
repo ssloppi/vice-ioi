@@ -28,6 +28,8 @@
 
 #include "vice.h"
 
+#ifdef HAVE_FASTSID
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -231,14 +233,14 @@ struct sound_s {
 
 /* XXX: check these */
 /* table for internal ADSR counter step calculations */
-static uint16_t adrtable[16] =
+static const uint16_t adrtable[16] =
 {
     1, 4, 8, 12, 19, 28, 34, 40, 50, 125, 250, 400, 500, 1500, 2500, 4000
 };
 
 /* XXX: check these */
 /* table for pseudo-exponential ADSR calculations */
-static uint32_t exptable[6] =
+static const uint32_t exptable[6] =
 {
     0x30000000, 0x1c000000, 0x0e000000, 0x08000000, 0x04000000, 0x00000000
 };
@@ -481,7 +483,7 @@ static char *fastsid_dump_state(sound_t *psid)
         print_voice(b + strlen(b), &psid->v[i]);
     }
 
-    return lib_stralloc(b);
+    return lib_strdup(b);
 }
 
 /* update SID structure */
@@ -764,7 +766,7 @@ static int16_t fastsid_calculate_single_sample(sound_t *psid, int i)
 }
 
 static int fastsid_calculate_samples(sound_t *psid, int16_t *pbuf, int nr,
-                                     int interleave, int *delta_t)
+                                     int interleave, CLOCK *delta_t)
 {
     int i;
     int16_t *tmp_buf;
@@ -1071,11 +1073,6 @@ static void fastsid_reset(sound_t *psid, CLOCK cpu_clk)
     psid->laststoreclk = cpu_clk;
 }
 
-static void fastsid_prevent_clk_overflow(sound_t *psid, CLOCK sub)
-{
-    psid->laststoreclk -= sub;
-}
-
 static void fastsid_resid_state_read(sound_t *psid, sid_snapshot_state_t *sid_state)
 {
 }
@@ -1093,7 +1090,6 @@ sid_engine_t fastsid_hooks =
     fastsid_store,
     fastsid_reset,
     fastsid_calculate_samples,
-    fastsid_prevent_clk_overflow,
     fastsid_dump_state,
     fastsid_resid_state_read,
     fastsid_resid_state_write
@@ -1276,3 +1272,5 @@ void fastsid_state_write(struct sound_s *psid, struct sid_fastsid_snapshot_state
         psid->v[i].filtRef = (vreal_t)sid_state->v_filtRef[i];
     }
 }
+
+#endif

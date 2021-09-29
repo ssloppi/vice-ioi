@@ -33,43 +33,23 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
-#include "machine.h"
-#include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
 #include "basedialogs.h"
+#include "basewidgets.h"
+#include "debug_gtk3.h"
+#include "machine.h"
 #include "openfiledialog.h"
+#include "resources.h"
+#include "widgethelpers.h"
+#include "ui.h"
 
 #include "megacartwidget.h"
 
 
-
-/** \brief  Handler for the "clicked" event of the browse button
+/** \brief  Create Mega Cart settings widget
  *
- * Activates a file-open dialog and stores the file name in the GtkEntry passed
- * in \a user_data if valid, triggering a resource update.
+ * Allows selecting an nvram image and enabling/disabling write-back.
  *
- * \param[in]   widget      button
- * \param[in]   user_data   entry to store filename in
- */
-static void on_browse_clicked(GtkWidget *widget, gpointer user_data)
-{
-    gchar *filename;
-
-    filename = vice_gtk3_open_file_dialog("Open NvRAM image file", NULL, NULL,
-            NULL);
-    if (filename != NULL) {
-        debug_gtk3("setting 'MegaCartNvRAMfilename' to '%s'.", filename);
-        vice_gtk3_resource_entry_full_set(GTK_WIDGET(user_data), filename);
-        g_free(filename);
-    }
-}
-
-
-/** \brief  Create widget to control IEEE-488 adapter
- *
- * \param[in]   parent  parent widget
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -77,29 +57,23 @@ GtkWidget *mega_cart_widget_create(GtkWidget *parent)
 {
     GtkWidget *grid;
     GtkWidget *write_back;
-    GtkWidget *label;
-    GtkWidget *entry = NULL;
-    GtkWidget *browse = NULL;
+    GtkWidget *browser;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 16);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT);
 
-    label = gtk_label_new("NvRAM image file");
-    gtk_widget_set_halign(label, GTK_ALIGN_START);
-    entry = vice_gtk3_resource_entry_full_new("MegaCartNvRAMfilename");
-    gtk_widget_set_hexpand(entry, TRUE);
-    browse = gtk_button_new_with_label("Browse ...");
-    g_signal_connect(browse, "clicked", G_CALLBACK(on_browse_clicked),
-            (gpointer)entry);
-
-    gtk_grid_attach(GTK_GRID(grid), label, 0, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), entry, 1, 0, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), browse, 2, 0, 1, 1);
+    browser = vice_gtk3_resource_browser_new(
+            "MegaCartNvRAMfilename",
+            NULL,
+            NULL,
+            "Select NvRAM image file",
+            "NvRAM image file",
+            NULL);
+    gtk_grid_attach(GTK_GRID(grid), browser, 0, 0, 1, 1);
 
     write_back = vice_gtk3_resource_check_button_new(
-            "MegaCartNvRAMWriteBack", "Enable Mega Cart NvRAM write back");
-    gtk_grid_attach(GTK_GRID(grid), write_back, 0, 1, 3, 1);
+            "MegaCartNvRAMWriteBack",
+            "Enable Mega Cart NvRAM write back");
+    gtk_grid_attach(GTK_GRID(grid), write_back, 0, 1, 1, 1);
 
     gtk_widget_show_all(grid);
     return grid;

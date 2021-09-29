@@ -1,4 +1,5 @@
 AM_CPPFLAGS = \
+	@VICE_CPPFLAGS@ \
 	@ARCH_INCLUDES@ \
 	-I$(top_builddir)/src \
 	-I$(top_srcdir)/src \
@@ -8,6 +9,13 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/joyport \
 	-I$(top_srcdir)/src/samplerdrv \
 	-I$(top_srcdir)/src/diag
+
+AM_CFLAGS = @VICE_CFLAGS@
+
+AM_CXXFLAGS = @VICE_CXXFLAGS@
+
+AM_LDFLAGS = @VICE_LDFLAGS@
+
 
 noinst_LIBRARIES = libuserport.a
 
@@ -24,9 +32,15 @@ libuserport_a_SOURCES = \
 	userport_diag_586220_harness.h \
 	userport_digimax.c \
 	userport_digimax.h \
+	userport_io_sim.c \
+	userport_io_sim.h \
 	userport_joystick.c \
 	userport_joystick.h \
+	userport_petscii_snespad.c \
+	userport_petscii_snespad.h \
 	userport_rtc_58321a.c \
 	userport_rtc_58321a.h \
 	userport_rtc_ds1307.c \
-	userport_rtc_ds1307.h
+	userport_rtc_ds1307.h \
+	userport_superpad64.c \
+	userport_superpad64.h

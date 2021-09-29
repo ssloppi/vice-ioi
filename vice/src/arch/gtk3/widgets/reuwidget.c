@@ -37,33 +37,28 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
+#include "vice_gtk3.h"
 #include "machine.h"
 #include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "basedialogs.h"
-#include "openfiledialog.h"
-#include "savefiledialog.h"
 #include "cartridge.h"
-#include "cartimagewidget.h"
-#include "carthelpers.h"
 
 #include "reuwidget.h"
 
 
-/** \brief  List of supported RAM sizes
+/** \brief  List of supported RAM sizes in KiB/MiB
+ *
+ * REU sizes tend to be specified in MiB when being 1MiB or higher, not KiB.
  */
 static const vice_gtk3_radiogroup_entry_t ram_sizes[] = {
-    { "128KB", 128 },
-    { "256KB", 256 },
-    { "512KB", 512 },
-    { "1MB", 1024 },
-    { "2MB", 2048 },
-    { "4MB", 4096 },
-    { "8MB", 8192 },
-    { "16MB", 16384 },
-    { NULL, -1 }
+    { "128KiB",     128 },
+    { "256KiB",     256 },
+    { "512KiB",     512 },
+    { "1MiB",       1024 },
+    { "2MiB",       2048 },
+    { "4MiB",       4096 },
+    { "8MiB",       8192 },
+    { "16MiB",      16384 },
+    { NULL,         -1 }
 };
 
 
@@ -81,7 +76,7 @@ static GtkWidget *create_reu_ioswap_widget(void)
 }
 
 
-/** \brief  Create radio button group to determine GEORAM RAM size
+/** \brief  Create radio button group to determine REU RAM size
  *
  * \return  GtkGrid
  */
@@ -90,7 +85,7 @@ static GtkWidget *create_reu_size_widget(void)
     GtkWidget *grid;
     GtkWidget *radio_group;
 
-    grid = uihelpers_create_grid_with_label("RAM Size", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "RAM Size", 1);
     radio_group = vice_gtk3_resource_radiogroup_new("REUsize", ram_sizes,
             GTK_ORIENTATION_VERTICAL);
     g_object_set(radio_group, "margin-left", 16, NULL);
@@ -100,22 +95,24 @@ static GtkWidget *create_reu_size_widget(void)
 }
 
 
-/** \brief  Create widget to load/save GEORAM image file
+/** \brief  Create widget to load/save REU image file
  *
  * \return  GtkGrid
  */
-static GtkWidget *create_reu_image_widget(GtkWidget *parent)
+static GtkWidget *create_reu_image_widget(void)
 {
-    return cart_image_widget_create(parent, "REU image",
+    return cart_image_widget_create(
+            NULL, "REU image",
             "REUfilename", "REUImageWrite",
             carthelpers_save_func, carthelpers_flush_func,
+            carthelpers_can_save_func, carthelpers_can_flush_func,
             CARTRIDGE_NAME_REU, CARTRIDGE_REU);
 }
 
 
 /** \brief  Create widget to control RAM Expansion Module resources
  *
- * \param[in]   parent  parent widget, used for dialogs
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -127,9 +124,7 @@ GtkWidget *reu_widget_create(GtkWidget *parent)
     GtkWidget *reu_ioswap;
     GtkWidget *reu_image;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 8);
 
     reu_enable_widget = carthelpers_create_enable_check_button(
             CARTRIDGE_NAME_REU, CARTRIDGE_REU);
@@ -143,7 +138,7 @@ GtkWidget *reu_widget_create(GtkWidget *parent)
     reu_size = create_reu_size_widget();
     gtk_grid_attach(GTK_GRID(grid), reu_size, 0, 1, 1, 1);
 
-    reu_image = create_reu_image_widget(parent);
+    reu_image = create_reu_image_widget();
     gtk_grid_attach(GTK_GRID(grid), reu_image, 1, 1, 1, 1);
 
     gtk_widget_show_all(grid);

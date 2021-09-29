@@ -38,10 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "basewidgets.h"
-#include "resourcehelpers.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
+#include "vice_gtk3.h"
 #include "resources.h"
 #include "printer.h"
 
@@ -51,9 +48,9 @@
 /** \brief  List of text output devices
  */
 static const vice_gtk3_radiogroup_entry_t device_list[] = {
-    { "#1 (file dump)", 0 },
-    { "#2 (exec)", 1 },
-    { "#3 (exec)", 2 },
+    { "#1", 0 },
+    { "#2", 1 },
+    { "#3", 2 },
     { NULL, -1 }
 };
 
@@ -69,7 +66,7 @@ GtkWidget *printer_output_device_widget_create(int device)
     GtkWidget *grid;
     GtkWidget *radio_group;
 
-    grid = uihelpers_create_grid_with_label("Output device", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Output device", 1);
     radio_group = vice_gtk3_resource_radiogroup_new_sprintf(
             "Printer%dTextDevice", device_list, GTK_ORIENTATION_VERTICAL,
             device);

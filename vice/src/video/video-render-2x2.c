@@ -39,8 +39,7 @@ static void video_render_2x2_main(video_render_config_t *config,
                                   const unsigned int xs, const unsigned int ys,
                                   const unsigned int xt, const unsigned int yt,
                                   const unsigned int pitchs,
-                                  const unsigned int pitcht,
-                                  int depth)
+                                  const unsigned int pitcht)
 {
     const video_render_color_tables_t *colortab;
     int doublescan, scale2x;
@@ -50,43 +49,11 @@ static void video_render_2x2_main(video_render_config_t *config,
     scale2x = config->scale2x;
 
     if (scale2x) {
-        switch (depth) {
-            case 8:
-                render_08_scale2x(colortab, src, trg, width, height,
-                                  xs, ys, xt, yt, pitchs, pitcht);
-                return;
-            case 16:
-                render_16_scale2x(colortab, src, trg, width, height,
-                                  xs, ys, xt, yt, pitchs, pitcht);
-                return;
-            case 24:
-                render_24_scale2x(colortab, src, trg, width, height,
-                                  xs, ys, xt, yt, pitchs, pitcht);
-                return;
-            case 32:
-                render_32_scale2x(colortab, src, trg, width, height,
-                                  xs, ys, xt, yt, pitchs, pitcht);
-                return;
-        }
+        render_32_scale2x(colortab, src, trg, width, height,
+                          xs, ys, xt, yt, pitchs, pitcht);
     } else {
-        switch (depth) {
-            case 8:
-                render_08_2x2_04(colortab, src, trg, width, height,
-                                 xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-                return;
-            case 16:
-                render_16_2x2_04(colortab, src, trg, width, height,
-                                 xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-                return;
-            case 24:
-                render_24_2x2_04(colortab, src, trg, width, height,
-                                 xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-                return;
-            case 32:
-                render_32_2x2_04(colortab, src, trg, width, height,
-                                 xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-                return;
-        }
+        render_32_2x2(colortab, src, trg, width, height,
+                         xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
     }
 }
 

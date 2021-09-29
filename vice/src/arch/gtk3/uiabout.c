@@ -1,10 +1,8 @@
 /** \file   uiabout.c
  * \brief   GTK3 about dialog
  *
- * \todo    Needs a proper logo, not the old, ugly, blue one. The logo from the
- *          pokefinder website will do nicely, I think.
- *
  * \author  Bas Wassink <b.wassink@ziggo.nl>
+ * \author  Greg King <gregdk@users.sf.net>
  */
 
 /*
@@ -33,6 +31,7 @@
 #include <gtk/gtk.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "debug_gtk3.h"
 #include "info.h"
@@ -43,8 +42,14 @@
 #include "svnversion.h"
 #endif
 #include "uidata.h"
+#include "archdep_get_runtime_info.h"
 
 #include "uiabout.h"
+
+
+/** \brief  Maximum length of generated version string
+ */
+#define VERSION_STRING_MAX 8192
 
 
 /** \brief  List of current team members
@@ -70,10 +75,6 @@ static char **create_current_team_list(void)
     }
     list = lib_malloc(sizeof *list * (i + 1));
 
-#ifdef HAVE_DEBUG_GTK3UI
-    g_print("[debug-gtk3ui] %s(): team members = %d\n", __func__, (int)i);
-#endif
-
     /* create list of current team members */
     for (i = 0; core_team[i].name != NULL; i++) {
         list[i] = core_team[i].name;
@@ -81,26 +82,6 @@ static char **create_current_team_list(void)
     list[i] = NULL;
     return list;
 }
-
-
-#if 0
-static char **create_translators_list(void)
-{
-    char **list = lib_malloc(sizeof *list * 256);
-    size_t i;
-
-    while (trans_team[i].name != NULL) {
-        char *member = lib_malloc(256);
-        snprintf(member, 256, "%s - %s (%s)",
-                trans_team[i].years,
-                trans_team[i].name,
-                trans_team[i].language);
-        list[i++] = member;
-    }
-    list[i] = NULL;
-    return list;
-}
-#endif
 
 
 /** \brief  Deallocate current team list
@@ -130,11 +111,6 @@ static GdkPixbuf *get_vice_logo(void)
 static void about_destroy_callback(GtkWidget *widget, gpointer user_data)
 {
     destroy_current_team_list(authors);
-    /* GdkPixbuf mentions setting refcount to 1, but it appears the about
-     * dialog parent cleans it up somehow -- compyx */
-#if 0
-    g_object_unref(user_data);
-#endif
 }
 
 
@@ -151,16 +127,16 @@ static void about_destroy_callback(GtkWidget *widget, gpointer user_data)
 static void about_response_callback(GtkWidget *widget, gint response_id,
                                     gpointer user_data)
 {
-#ifdef HAVE_DEBUG_GTK3UI
-    g_print("[debug-gtk3ui] %s(): response id: %d\n", __func__, response_id);
-#endif
-    /* the GTK_RESPONSE_DELETE_EVENT is sent when the user clicks 'Close', but
-     * also when the user clicks the 'X' */
-    if (response_id == GTK_RESPONSE_DELETE_EVENT) {
-#ifdef HAVE_DEBUG_GTK3UI
-        g_print("[debug-gtk3ui] %s(): CLOSE button clicked\n", __func__);
-#endif
-        gtk_widget_destroy(widget);
+    /* The GTK_RESPONSE_DELETE_EVENT is sent when the user clicks 'Close',
+     * but also when the user clicks the 'X' gadget.
+     */
+    switch (response_id) {
+        case GTK_RESPONSE_DELETE_EVENT:
+            gtk_widget_destroy(widget);
+            break;
+        default:
+            debug_gtk3("Warning: Unsupported response ID %d", response_id);
+            break;
     }
 }
 
@@ -169,15 +145,17 @@ static void about_response_callback(GtkWidget *widget, gint response_id,
  *
  * \param[in,out]   widget      widget triggering the event
  * \param[in]       user_data   data for the event (unused)
+ *
+ * \return  TRUE
  */
-void ui_about_dialog_callback(GtkWidget *widget, gpointer user_data)
+gboolean ui_about_dialog_callback(GtkWidget *widget, gpointer user_data)
 {
+    char version[VERSION_STRING_MAX];
     GtkWidget *about = gtk_about_dialog_new();
     GdkPixbuf *logo = get_vice_logo();
 
-#ifdef HAVE_DEBUG_GTK3UI
-    g_print("[debug-gtk3ui] %s() called\n", __func__);
-#endif
+    archdep_runtime_info_t runtime_info;
+
 
     /* set toplevel window, Gtk doesn't like dialogs without parents */
     gtk_window_set_transient_for(GTK_WINDOW(about), ui_get_active_window());
@@ -189,14 +167,50 @@ void ui_about_dialog_callback(GtkWidget *widget, gpointer user_data)
     gtk_window_set_title(GTK_WINDOW(about), "About VICE");
 
     /* set version string */
-    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about),
 #ifdef USE_SVN_REVISION
-            VERSION " r" VICE_SVN_REV_STRING " (Gtk3)"
+    g_snprintf(version, VERSION_STRING_MAX,
+            "%s r%s\n(GTK3 %d.%d.%d, GLib %d.%d.%d, Cairo %s, Pango %s)",
+            VERSION, VICE_SVN_REV_STRING,
+            GTK_MAJOR_VERSION, GTK_MINOR_VERSION, GTK_MICRO_VERSION,
+            GLIB_MAJOR_VERSION, GLIB_MINOR_VERSION, GLIB_MICRO_VERSION,
+            cairo_version_string(),
+            pango_version_string());
 #else
-            VERSION " (Gtk3)"
+    g_snprintf(version, VERSION_STRING_MAX,
+            "%s\n(GTK3 %d.%d.%d, GLib %d.%d.%d, Cairo %s, Pango %s)",
+            VERSION,
+            GTK_MAJOR_VERSION, GTK_MINOR_VERSION, GTK_MICRO_VERSION,
+            GLIB_MAJOR_VERSION, GLIB_MINOR_VERSION, GLIB_MICRO_VERSION,
+            cairo_version_string(),
+            pango_version_string());
 #endif
-            );
 
+    if (archdep_get_runtime_info(&runtime_info)) {
+        size_t v = strlen(version);
+        g_snprintf(version + v, VERSION_STRING_MAX - v - 1UL,
+                "\n\n%s %s\n"
+                "%s\n"
+                "%s",
+                runtime_info.os_name,
+                runtime_info.os_release,
+                runtime_info.os_version,
+                runtime_info.machine);
+    }
+
+#ifdef FREE_MR_AMMO
+    gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "FREE MR AMMO");
+#endif
+
+
+    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about), version);
+
+    /* Describe the program */
+    gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(about),
+#ifndef FREE_MR_AMMO
+            "Emulates an 8-bit Commodore computer.");
+#else
+            "Free's Mr. Ammo");
+#endif
     /* set license */
     gtk_about_dialog_set_license_type(GTK_ABOUT_DIALOG(about), GTK_LICENSE_GPL_2_0);
     /* set website link and title */
@@ -207,11 +221,18 @@ void ui_about_dialog_callback(GtkWidget *widget, gpointer user_data)
     /* set list of current team members */
     gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(about), (const gchar **)authors);
     /* set copyright string */
+    /*
+     * TODO:    Get the current year from [svn]version.h or something similar,
+     *          so altering this file by hand won't be required anymore.
+     */
     gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(about),
-            "Copyright 1996-2018 VICE TEAM");
+            "Copyright 1996-2020, VICE team");
 
     /* set logo */
-    gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about), logo);
+    if (logo != NULL) {
+        gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about), logo);
+        g_object_unref(logo);
+    }
 
     /*
      * hook up event handlers
@@ -219,11 +240,12 @@ void ui_about_dialog_callback(GtkWidget *widget, gpointer user_data)
 
     /* destroy callback, called when the dialog is closed through the 'X',
      * but NOT when clicking 'Close' */
-    g_signal_connect(about, "destroy", G_CALLBACK(about_destroy_callback), (gpointer)logo);
+    g_signal_connect_unlocked(about, "destroy", G_CALLBACK(about_destroy_callback),
+            NULL);
 
     /* set up a generic handler for various buttons, this makes sure the
      * 'Close' button is handled properly */
-    g_signal_connect(about, "response", G_CALLBACK(about_response_callback),
+    g_signal_connect_unlocked(about, "response", G_CALLBACK(about_response_callback),
             NULL);
 
     /* make the about dialog modal */
@@ -231,4 +253,5 @@ void ui_about_dialog_callback(GtkWidget *widget, gpointer user_data)
 
     /* ... and show the dialog finally */
     gtk_widget_show(about);
+    return TRUE;
 }

@@ -369,7 +369,8 @@ void mon_navigate_goto_string(mon_navigate_private_t * mnp, char *addr)
     }
 }
 
-
+/* FIXME: seems to be dead code, leftover from the windows UI? */
+#if 0
 void mon_disassembly_determine_popup_commands(mon_disassembly_private_t *pmdp, int xPos, int yPos, uint16_t *ulMask, uint16_t *ulDefault)
 {
     MON_ADDR CurrentAddress;
@@ -430,6 +431,7 @@ void mon_disassembly_determine_popup_commands(mon_disassembly_private_t *pmdp, i
         }
     }
 }
+#endif
 
 void mon_ui_init(void)
 {
@@ -473,7 +475,7 @@ mon_memory_t *mon_memory_get_lines(mon_memory_private_t * pmmp, int lines_visibl
         contents->flags.is_breakpoint = 0;
         contents->flags.breakpoint_active = 0;
 
-        contents->content = lib_stralloc(">C:a0e0  54 4f d0 4f  ce 57 41 49   TO.O.WAI");
+        contents->content = lib_strdup(">C:a0e0  54 4f d0 4f  ce 57 41 49   TO.O.WAI");
         size += 8;
 
         contents->length = strlen(contents->content);

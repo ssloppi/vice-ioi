@@ -157,7 +157,7 @@ rtc_ds1307_t *ds1307_init(char *device)
     retval->old_offset = retval->offset;
     memcpy(retval->old_clock_regs, retval->clock_regs, DS1307_REG_SIZE);
 
-    retval->device = lib_stralloc(device);
+    retval->device = lib_strdup(device);
     retval->state = DS1307_IDLE;
     retval->sclk_line = 1;
     retval->data_line = 1;
@@ -424,7 +424,7 @@ void ds1307_set_data_line(rtc_ds1307_t *context, uint8_t data)
 
 uint8_t ds1307_read_data_line(rtc_ds1307_t *context)
 {
-	switch (context->state) {
+    switch (context->state) {
         case DS1307_READ_REGS:
             return (context->reg & (1 << (7 - context->bit))) >> (7 - context->bit);
         case DS1307_ADDRESS_READ_ACK:
@@ -469,7 +469,7 @@ uint8_t ds1307_read_data_line(rtc_ds1307_t *context)
    STRING | device              | device name STRING
  */
 
-static char snap_module_name[] = "RTC_DS1307";
+static const char snap_module_name[] = "RTC_DS1307";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   0
 
@@ -559,7 +559,7 @@ int ds1307_read_snapshot(rtc_ds1307_t *context, snapshot_t *s)
     }
 
     /* Do not accept versions higher than current */
-    if (vmajor > SNAP_MAJOR || vminor > SNAP_MINOR) {
+    if (snapshot_version_is_bigger(vmajor, vminor, SNAP_MAJOR, SNAP_MINOR)) {
         snapshot_set_error(SNAPSHOT_MODULE_HIGHER_VERSION);
         goto fail;
     }

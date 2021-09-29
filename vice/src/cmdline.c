@@ -36,6 +36,7 @@
 #include "archdep.h"
 #include "cmdline.h"
 #include "lib.h"
+#include "log.h"
 #include "resources.h"
 #include "types.h"
 #include "uicmdline.h"
@@ -100,13 +101,13 @@ int cmdline_register_options(const cmdline_option_t *c)
             p = options + num_options;
         }
 
-        p->name = lib_stralloc(c->name);
+        p->name = lib_strdup(c->name);
         p->type = c->type;
         p->attributes = c->attributes;
         p->set_func = c->set_func;
         p->extra_param = c->extra_param;
         if (c->resource_name != NULL) {
-            p->resource_name = lib_stralloc(c->resource_name);
+            p->resource_name = lib_strdup(c->resource_name);
         } else {
             p->resource_name = NULL;
         }
@@ -300,7 +301,7 @@ void cmdline_show_help(void *userparam)
     /* AmigaOS used some translation function for this string: */
     printf("\nAvailable command-line options:\n\n");
     for (i = 0; i < num_options; i++) {
-        char *param = cmdline_options_get_param(i);
+        const char *param = cmdline_options_get_param(i);
         if ((options[i].attributes & CMDLINE_ATTRIB_NEED_ARGS) && param != NULL) {
             printf("%s %s\n", options[i].name, param);
         } else {
@@ -317,25 +318,25 @@ char *cmdline_options_get_name(int counter)
     return (char *)options[counter].name;
 }
 
-char *cmdline_options_get_param(int counter)
+const char *cmdline_options_get_param(int counter)
 {
-    return (char *)options[counter].param_name;
+    return options[counter].param_name;
 }
 
 char *cmdline_options_get_description(int counter)
 {
-    union char_func cf;
-
+    if (combined_string != NULL) {
+        lib_free(combined_string);
+        combined_string = NULL;
+    }
     if (options[counter].attributes & CMDLINE_ATTRIB_DYNAMIC_DESCRIPTION) {
-        if (combined_string) {
-            lib_free(combined_string);
-        }
+        union char_func cf;
         cf.c = options[counter].description;
         combined_string = cf.f(options[counter].attributes >> 8);
-        return combined_string;
     } else {
-        return (char *)options[counter].description;
+        combined_string = lib_strdup(options[counter].description);
     }
+    return combined_string;
 }
 
 char *cmdline_options_string(void)
@@ -344,7 +345,7 @@ char *cmdline_options_string(void)
     char *cmdline_string, *new_cmdline_string;
     char *add_to_options1, *add_to_options2, *add_to_options3;
 
-    cmdline_string = lib_stralloc("\n");
+    cmdline_string = lib_strdup("\n");
 
     for (i = 0; i < num_options; i++) {
         add_to_options1 = lib_msprintf("%s", options[i].name);
@@ -376,4 +377,78 @@ char *cmdline_options_string(void)
 int cmdline_get_num_options(void)
 {
     return num_options;
+}
+
+void cmdline_log_active(void)
+{
+    unsigned int i;
+    char *cmdline, *cmd;
+
+    cmdline = lib_strdup("-default");
+
+    for (i = 0; i < num_options; i++) {
+        const char *param = cmdline_options_get_param(i);
+        const char *resname = options[i].resource_name;
+        const char *optname = options[i].name;
+        const char *resval_str = NULL;
+        char *resval_str_default = NULL;
+        int restype = -1;
+        int resval_int = -1;
+        int resval_int_default = -1;
+        if (resname) {
+            restype = resources_query_type(resname);
+            if (restype == RES_INTEGER) {
+                resources_get_int(resname, &resval_int);
+                resources_get_default_value(resname, &resval_int_default);
+            } else if (restype == RES_STRING) {
+                resources_get_string(resname, &resval_str);
+                resources_get_default_value(resname, &resval_str_default);
+            }
+        }
+        cmd = NULL;
+        if ((options[i].attributes & CMDLINE_ATTRIB_NEED_ARGS) && param != NULL) {
+            /* the cmdline option needs a parameter, we assume this is what the resource got assigned */
+            if (restype == RES_INTEGER) {
+                if (resval_int != resval_int_default) {
+                    char tmp[32];
+                    sprintf(tmp, "%d", resval_int);
+                    cmd = util_concat(optname, " ", tmp, NULL);
+                }
+            } else if (restype == RES_STRING) {
+                if ((resval_str != NULL) && (resval_str_default != NULL)) {
+                    if (strcmp(resval_str, resval_str_default)) {
+                        cmd = util_concat(optname, " ", resval_str, NULL);
+                    }
+                }
+            }
+        } else {
+            /* the options does not need a parameter, the resource value should match the value
+               defined in the option itself */
+            if (restype == RES_INTEGER) {
+                if (resval_int != resval_int_default) {
+                    if (resval_int == vice_ptr_to_int(options[i].resource_value)) {
+                        cmd = lib_strdup(optname);
+                    }
+                }
+            } else if (restype == RES_STRING) {
+                if ((resval_str != NULL) && (resval_str_default != NULL) && (options[i].resource_value != NULL)) {
+                    if (strcmp(resval_str, resval_str_default)) {
+                        if (!strcmp(resval_str, options[i].resource_value)) {
+                            cmd = lib_strdup(optname);
+                        }
+                    }
+                }
+            }
+        }
+        if (cmd) {
+            char *p;
+            p = cmdline; /* remember old pointer */
+            cmdline = util_concat(p, " ", cmd, NULL);
+            lib_free(p); /* free old pointer */
+            lib_free(cmd); /* free old pointer */
+        }
+    }
+    log_message(LOG_DEFAULT, "reconstructed commandline options (might be incomplete):");
+    log_message(LOG_DEFAULT, "%s", cmdline);
+    lib_free(cmdline);
 }

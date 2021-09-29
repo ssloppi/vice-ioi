@@ -38,7 +38,6 @@
 
 #define UTIL_FILE_LOAD_RAW          0
 #define UTIL_FILE_LOAD_SKIP_ADDRESS 1
-#define UTIL_FILE_LOAD_FILL         2
 
 #define util_arraysize(_x) (sizeof(_x) / sizeof(_x[0]))
 
@@ -54,20 +53,19 @@ extern char *util_add_extension_const(const char *filename,
                                       const char *extension);
 extern void util_add_extension_maxpath(char *name, const char *extension,
                                        unsigned int maxpath);
-extern char *util_get_extension(char *filename);
+extern char *util_get_extension(const char *filename);
 
-extern size_t util_file_length(FILE *fd);
+extern off_t util_file_length(FILE *fd);
 extern int util_file_exists(const char *name);
 extern int util_file_load(const char *name, uint8_t *dest, size_t size,
                           unsigned int load_flag);
+extern int util_file_load_string(FILE *fd, char **dest);
 extern int util_file_save(const char *name, uint8_t *src, int size);
 
 extern int util_get_line(char *buf, int bufsize, FILE *f);
 extern void util_fname_split(const char *path, char **directory_return,
                              char **name_return);
 
-extern int util_string_to_long(const char *str, const char **endptr, int base,
-                               long *result);
 extern char *util_subst(const char *s, const char *string,
                         const char *replacement);
 extern int util_string_set(char **str, const char *new_value);
@@ -100,30 +98,5 @@ extern char util_tolower(char c);
 extern char util_toupper(char c);
 
 extern char *util_gen_hex_address_list(int start, int stop, int step);
-
-#ifndef HAVE_STRCASECMP
-extern int strcasecmp(const char *s1, const char *s2);
-#endif
-
-#ifndef HAVE_STRNCASECMP
-extern int strncasecmp(const char *s1, const char *s2, size_t n);
-#endif
-
-#ifndef HAVE_STRTOK_R
-extern char *strtok_r(char *s, const char *delim, char **last);
-#endif
-
-#ifndef HAVE_STRTOUL
-unsigned long strtoul(const char *nptr, char **endptr, int base);
-#endif
-
-#ifndef HAVE_VSNPRINTF
-int vsnprintf(char *text, size_t maxlen, const char *ftm, va_list ap);
-#endif
-
-#ifndef HAVE_SNPRINTF
-int snprintf(char *text, size_t maxlen, const char *fmt, ...);
-#endif
-
 
 #endif

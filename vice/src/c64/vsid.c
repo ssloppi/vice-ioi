@@ -44,7 +44,6 @@
 #include "c64gluelogic.h"
 #include "c64mem.h"
 #include "cia.h"
-#include "clkguard.h"
 #include "debug.h"
 #include "drive.h"
 #include "imagecontents.h"
@@ -162,7 +161,7 @@ static void c64_monitor_init(void)
 {
     unsigned int dnr;
     monitor_cpu_type_t asm6502;
-    monitor_interface_t *drive_interface_init[DRIVE_NUM];
+    monitor_interface_t *drive_interface_init[NUM_DISK_UNITS];
     monitor_cpu_type_t *asmarray[2];
 
     asmarray[0] = &asm6502;
@@ -171,7 +170,7 @@ static void c64_monitor_init(void)
     asm6502_init(&asm6502);
 
     /* keep the monitor happy */
-    for (dnr = 0; dnr < DRIVE_NUM; dnr++) {
+    for (dnr = 0; dnr < NUM_DISK_UNITS; dnr++) {
         drive_interface_init[dnr] = maincpu_monitor_interface_get();
     }
 
@@ -222,7 +221,8 @@ int machine_specific_init(void)
 
     /* Initialize sound.  Notice that this does not really open the audio
        device yet.  */
-    sound_init(machine_timing.cycles_per_sec, machine_timing.cycles_per_rfsh);
+    sound_init((unsigned int)(machine_timing.cycles_per_sec),
+               (unsigned int)(machine_timing.cycles_per_rfsh));
 
     /* Initialize keyboard buffer.  */
     kbdbuf_init(631, 198, 10, (CLOCK)(machine_timing.rfsh_per_sec * machine_timing.cycles_per_rfsh));
@@ -281,7 +281,7 @@ void machine_specific_shutdown(void)
     psid_shutdown();
 }
 
-void machine_handle_pending_alarms(int num_write_cycles)
+void machine_handle_pending_alarms(CLOCK num_write_cycles)
 {
     vicii_handle_pending_alarms_external(num_write_cycles);
 }
@@ -296,23 +296,31 @@ static void machine_vsync_hook(void)
     static unsigned int time = 0;
 
     if (vsid_autostart_delay > 0) {
-        if (-- vsid_autostart_delay == 0) {
+        if (--vsid_autostart_delay == 0) {
             log_message(c64_log, "Triggering VSID autoload");
             psid_init_tune(0);
             for (i = 0; i < vsid_autostart_length; i += 1) {
-                mem_inject((uint16_t)(vsid_autostart_load_addr + i), vsid_autostart_data[i]);
+                mem_inject((uint16_t)(vsid_autostart_load_addr + i),
+                        vsid_autostart_data[i]);
             }
-            mem_set_basic_text(vsid_autostart_load_addr, (uint16_t)(vsid_autostart_load_addr + vsid_autostart_length));
+            mem_set_basic_text(vsid_autostart_load_addr,
+                    (uint16_t)(vsid_autostart_load_addr + vsid_autostart_length));
             kbdbuf_feed_runcmd("RUN\r");
         }
     }
 
-    playtime = (psid_increment_frames() * machine_timing.cycles_per_rfsh) / machine_timing.cycles_per_sec;
+#if 0
+    playtime = (psid_increment_frames() * machine_timing.cycles_per_rfsh)
+        / machine_timing.cycles_per_sec;
+#else
+    /* Count deciseconds */
+    playtime = (double)psid_increment_frames()
+        / machine_timing.rfsh_per_sec * 10.0;
+#endif
     if (playtime != time) {
-        vsid_ui_display_time(playtime);
         time = playtime;
+        vsid_ui_display_time(playtime);
     }
-    clk_guard_prevent_overflow(maincpu_clk_guard);
 }
 
 void machine_set_restore_key(int v)
@@ -386,12 +394,15 @@ void machine_change_timing(int timeval, int border_mode)
     sound_set_machine_parameter(machine_timing.cycles_per_sec, machine_timing.cycles_per_rfsh);
     debug_set_machine_parameter(machine_timing.cycles_per_line, machine_timing.screen_lines);
     sid_set_machine_parameter(machine_timing.cycles_per_sec);
-    clk_guard_set_clk_base(maincpu_clk_guard, machine_timing.cycles_per_rfsh);
 
     vicii_change_timing(&machine_timing);
 
-    cia1_set_timing(machine_context.cia1, machine_timing.cycles_per_sec, machine_timing.power_freq);
-    cia2_set_timing(machine_context.cia2, machine_timing.cycles_per_sec, machine_timing.power_freq);
+    cia1_set_timing(machine_context.cia1,
+                    (int)machine_timing.cycles_per_sec,
+                    machine_timing.power_freq);
+    cia2_set_timing(machine_context.cia2,
+                    (int)machine_timing.cycles_per_sec,
+                    machine_timing.power_freq);
 
     machine_trigger_reset(MACHINE_RESET_MODE_HARD);
 }

@@ -35,7 +35,7 @@
 
 #include "rushware_keypad.h"
 
-/* Control port <--> coplin keypad connections:
+/* Control port <--> rushware keypad connections:
 
    cport | keypad  | I/O
    --------------------------
@@ -44,6 +44,16 @@
      3   | KEY2    |  I
      4   | KEY3    |  I
      6   | KEYDOWN |  I
+
+   Works on:
+   - native joystick port(s) (x64/x64sc/xscpu64/x64dtv/xplus4/xvic)
+   - cga userport joystick adapter ports (x64/x64sc/xscpu64)
+   - hit userport joystick adapter ports (x64/x64sc/xscpu64)
+   - kingsoft userport joystick adapter ports (x64/x64sc/xscpu64)
+   - starbyte userport joystick adapter ports (x64/x64sc/xscpu64)
+   - hummer userport joystick adapter port (x64dtv)
+   - oem userport joystick adapter port (xvic)
+   - sidcart joystick adapter port (xplus4)
 
 The keypad has the following layout:
 
@@ -197,7 +207,7 @@ static uint8_t rushware_keypad_read(int port)
         retval = 0xef;
     }
 
-    joyport_display_joyport(JOYPORT_ID_RUSHWARE_KEYPAD, (uint8_t)~retval);
+    joyport_display_joyport(JOYPORT_ID_RUSHWARE_KEYPAD, (uint16_t)~retval);
 
     return retval;
 }
@@ -205,17 +215,22 @@ static uint8_t rushware_keypad_read(int port)
 /* ------------------------------------------------------------------------- */
 
 static joyport_t joyport_rushware_keypad_device = {
-    "RushWare Keypad",
-    JOYPORT_RES_ID_KEYPAD,
-    JOYPORT_IS_NOT_LIGHTPEN,
-    JOYPORT_POT_OPTIONAL,
-    joyport_rushware_keypad_enable,
-    rushware_keypad_read,
-    NULL,               /* no digital store */
-    NULL,               /* no pot-x read */
-    NULL,               /* no pot-y read */
-    NULL,               /* no write snapshot */
-    NULL                /* no read snapshot */
+    "Keypad (RushWare)",            /* name of the device */
+    JOYPORT_RES_ID_KEYPAD,          /* device is a keypad, only 1 keypad can be active at the same time */
+    JOYPORT_IS_NOT_LIGHTPEN,        /* device is NOT a lightpen */
+    JOYPORT_POT_OPTIONAL,           /* device does NOT use the potentiometer lines */
+    JOYSTICK_ADAPTER_ID_NONE,       /* device is NOT a joystick adapter */
+    JOYPORT_DEVICE_KEYPAD,          /* device is a Keypad */
+    0,                              /* NO output bits */
+    joyport_rushware_keypad_enable, /* device enable function */
+    rushware_keypad_read,           /* digital line read function */
+    NULL,                           /* NO digital line store function */
+    NULL,                           /* NO pot-x read function */
+    NULL,                           /* NO pot-x read function */
+    NULL,                           /* NO device write snapshot function */
+    NULL,                           /* NO device read snapshot function */
+    NULL,                           /* NO device hook function */
+    0                               /* NO device hook function mask */
 };
 
 /* ------------------------------------------------------------------------- */

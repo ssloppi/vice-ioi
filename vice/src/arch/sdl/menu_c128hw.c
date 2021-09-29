@@ -55,6 +55,7 @@
 
 #include "menu_sid.h"
 #include "menu_tape.h"
+#include "menu_userport.h"
 
 #ifdef HAVE_RAWNET
 #include "menu_ethernet.h"
@@ -103,8 +104,10 @@ static UI_MENU_CALLBACK(select_c128_model_callback)
 
 static const ui_menu_entry_t c128_model_menu[] = {
     { "C128 (PAL)", MENU_ENTRY_OTHER, select_c128_model_callback, (ui_callback_data_t)C128MODEL_C128_PAL },
+    { "C128 D (PAL)", MENU_ENTRY_OTHER, select_c128_model_callback, (ui_callback_data_t)C128MODEL_C128D_PAL },
     { "C128 DCR (PAL)", MENU_ENTRY_OTHER, select_c128_model_callback, (ui_callback_data_t)C128MODEL_C128DCR_PAL },
     { "C128 (NTSC)", MENU_ENTRY_OTHER, select_c128_model_callback, (ui_callback_data_t)C128MODEL_C128_NTSC },
+    { "C128 D (NTSC)", MENU_ENTRY_OTHER, select_c128_model_callback, (ui_callback_data_t)C128MODEL_C128D_NTSC },
     { "C128 DCR (NTSC)", MENU_ENTRY_OTHER, select_c128_model_callback, (ui_callback_data_t)C128MODEL_C128DCR_NTSC },
     SDL_MENU_LIST_END
 };
@@ -128,60 +131,14 @@ static const ui_menu_entry_t vdc_menu[] = {
       (ui_callback_data_t)2 },
     SDL_MENU_ITEM_SEPARATOR,
     SDL_MENU_ITEM_TITLE("VDC memory size"),
-    { "16kB",
+    { "16KiB",
       MENU_ENTRY_RESOURCE_RADIO,
       radio_VDC64KB_callback,
       (ui_callback_data_t)0 },
-    { "64kB",
+    { "64KiB",
       MENU_ENTRY_RESOURCE_RADIO,
       radio_VDC64KB_callback,
       (ui_callback_data_t)1 },
-    SDL_MENU_LIST_END
-};
-
-UI_MENU_DEFINE_TOGGLE(UserportDAC)
-UI_MENU_DEFINE_TOGGLE(UserportDIGIMAX)
-UI_MENU_DEFINE_TOGGLE(UserportRTCDS1307)
-UI_MENU_DEFINE_TOGGLE(UserportRTCDS1307Save)
-UI_MENU_DEFINE_TOGGLE(UserportRTC58321a)
-UI_MENU_DEFINE_TOGGLE(UserportRTC58321aSave)
-UI_MENU_DEFINE_TOGGLE(Userport4bitSampler)
-UI_MENU_DEFINE_TOGGLE(Userport8BSS)
-
-static const ui_menu_entry_t userport_menu[] = {
-    SDL_MENU_ITEM_TITLE("Userport devices"),
-    { "8 bit DAC enable",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_UserportDAC_callback,
-      NULL },
-    { "DigiMAX enable",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_UserportDIGIMAX_callback,
-      NULL },
-    { "RTC (58321a) enable",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_UserportRTC58321a_callback,
-      NULL },
-    { "Save RTC (58321a) data when changed",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_UserportRTC58321aSave_callback,
-      NULL },
-    { "4 bit sampler enable",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_Userport4bitSampler_callback,
-      NULL },
-    { "8 bit stereo sampler enable",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_Userport8BSS_callback,
-      NULL },
-    { "RTC (DS1307) enable",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_UserportRTCDS1307_callback,
-      NULL },
-    { "Save RTC (DS1307) data when changed",
-      MENU_ENTRY_RESOURCE_TOGGLE,
-      toggle_UserportRTCDS1307Save_callback,
-      NULL },
     SDL_MENU_LIST_END
 };
 
@@ -262,7 +219,7 @@ const ui_menu_entry_t c128_hardware_menu[] = {
       MENU_ENTRY_RESOURCE_TOGGLE,
       toggle_IEEE488_callback,
       NULL },
-    { "Userport devices",
+    { "Userport settings",
       MENU_ENTRY_SUBMENU,
       submenu_callback,
       (ui_callback_data_t)userport_menu },

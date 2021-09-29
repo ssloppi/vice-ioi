@@ -2,8 +2,7 @@
  * \file    src/arch/gtk3/widgets/contentpreviewwidget.c
  * \brief   GTK3 disk/tape/archive preview widget
  *
- * Written by
- *  Bas Wassink <b.wassink@ziggo.nl>
+ * \author  Bas Wassink <b.wassink@ziggo.nl>
  *
  * This file is part of VICE, the Versatile Commodore Emulator.
  * See README for copyright notice.
@@ -31,16 +30,35 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "debug_gtk3.h"
 #include "basedialogs.h"
-#include "lib.h"
+#include "charset.h"
+#include "debug_gtk3.h"
 #include "imagecontents.h"
+#include "lib.h"
+#include "log.h"
+#include "resources.h"
+#include "widgethelpers.h"
 
 #include "contentpreviewwidget.h"
 
+
+/** \brief  Function to read image contents
+ */
 static read_contents_func_type content_func = NULL;
+
+
+/** \brief  Callback to trigger on the "response" event of the widget
+ */
 static void (*response_func)(GtkWidget *, gint, gpointer);
+
+
+/** \brief  reference to the content view widget
+ */
 static GtkWidget *content_view = NULL;
+
+
+/** \brief  Reference to the parent dialog
+ */
 static GtkWidget *parent_dialog;
 
 
@@ -64,6 +82,9 @@ static void on_row_activated(
     GtkTreeModel *model;
     GtkTreeSelection *selection;
     GtkTreeIter iter;
+    int autostart = 0;
+
+    resources_get_int("AutostartOnDoubleclick", &autostart);
 
     model = gtk_tree_view_get_model(view);
     selection = gtk_tree_view_get_selection(view);
@@ -72,9 +93,7 @@ static void on_row_activated(
         int row;
 
         gtk_tree_model_get(model, &iter, 1, &row, -1);
-        debug_gtk3("got row %d in the image.", row);
         if (row < 0) {
-            debug_gtk3("index -1, nope.");
             return;
         }
         /* dirty trick: call the "response" event handler with the
@@ -82,7 +101,7 @@ static void on_row_activated(
          * user_data argument */
         if (parent_dialog != NULL) {
             response_func(parent_dialog,
-                    VICE_RESPONSE_AUTOSTART,
+                    autostart ? VICE_RESPONSE_AUTOSTART_INDEX : VICE_RESPONSE_AUTOLOAD_INDEX,
                     GINT_TO_POINTER(row + 1));  /* for some reason the first
                                                    file has index 1 */
         }
@@ -90,40 +109,10 @@ static void on_row_activated(
 }
 
 
-/* FIXME: stole this from arch/unix/x11/gnome/x11ui.c
- */
-static unsigned char *convert_utf8(unsigned char *s)
-{
-    unsigned char *d, *r;
-
-    r = d = lib_malloc((size_t)(strlen((char *)s) * 2 + 1));
-    while (*s) {
-        if (*s < 0x80) {
-            *d = *s;
-        } else {
-            /* special latin1 character handling */
-            if (*s == 0xa0) {
-                *d = 0x20;
-            } else {
-                if (*s == 0xad) {
-                    *s = 0xed;
-                }
-                *d++ = 0xc0 | (*s >> 6);
-                *d = (*s & ~0xc0) | 0x80;
-            }
-        }
-        s++;
-        d++;
-    }
-    *d = '\0';
-    return r;
-}
-
-
 /** \brief  Create the model for the view
  *
  * The model created has two columns, a string representing a file:
- * '<blocks> "<filename>" <filetype-and-flags>' and an integer which indicates
+ * '\<blocks\> "\<filename\>" \<filetype-and-flags\>' and an integer which indicates
  * the file's index in the image's "directory".
  *
  * \param[in]   path    path to image file
@@ -147,7 +136,7 @@ static GtkListStore *create_model(const char *path)
     }
 
     if (content_func == NULL) {
-        debug_gtk3("no content-get function specified, bailing!");
+        log_error(LOG_ERR, "no content-get function specified, bailing!");
         return model;
     }
 
@@ -164,8 +153,8 @@ static GtkListStore *create_model(const char *path)
     row = -1;   /* -1 means invalid file when double-clicking */
 
     /* disk name & ID */
-    tmp = image_contents_to_string(contents, 0);
-    utf8 = (char *)convert_utf8((unsigned char *)tmp);
+    tmp = image_contents_to_string(contents, IMAGE_CONTENTS_STRING_PETSCII);
+    utf8 = (char *)vice_gtk3_petscii_to_utf8((unsigned char *)tmp, true, false);
     gtk_list_store_append(model, &iter);
     gtk_list_store_set(model, &iter, 0, utf8, 1, row, -1);
     row++;
@@ -174,8 +163,8 @@ static GtkListStore *create_model(const char *path)
 
     /* files, if any */
     for (entry = contents->file_list; entry != NULL; entry = entry->next) {
-        tmp = image_contents_file_to_string(entry, 0);
-        utf8 = (char *)convert_utf8((unsigned char *)tmp);
+        tmp = image_contents_file_to_string(entry, IMAGE_CONTENTS_STRING_PETSCII);
+        utf8 = (char *)vice_gtk3_petscii_to_utf8((unsigned char *)tmp, false, false);
         gtk_list_store_append(model, &iter);
         gtk_list_store_set(model, &iter,
                 0, utf8,
@@ -188,9 +177,9 @@ static GtkListStore *create_model(const char *path)
 
     /* blocks free */
     blocks = contents->blocks_free;
-    if (blocks > 0) {
+    if (blocks >= 0) {
         tmp = lib_msprintf("%d BLOCKS FREE.", contents->blocks_free);
-        utf8 = (char *)convert_utf8((unsigned char *)tmp);
+        utf8 = (char *)vice_gtk3_petscii_to_utf8((unsigned char *)tmp, false, false);
         gtk_list_store_append(model, &iter);
         gtk_list_store_set(model, &iter,
                 0, utf8,
@@ -224,7 +213,7 @@ static GtkWidget *create_view(const char *path)
     view = GTK_TREE_VIEW(gtk_tree_view_new_with_model(GTK_TREE_MODEL(model)));
     g_object_unref(model);
     renderer = gtk_cell_renderer_text_new();
-    g_object_set(renderer, "font", "CBM 10", NULL);
+    g_object_set(renderer, "font", "C64 Pro Mono 10", NULL);
     column = gtk_tree_view_column_new_with_attributes("Contents", renderer,
             "text", 0, NULL);
     gtk_tree_view_append_column(view, column);
@@ -254,8 +243,9 @@ static GtkWidget *create_view(const char *path)
  * If this argument is `NULL`, no image contents will be displayed in the
  * widget.
  *
- * \param[in]   func        function to use to retrieve image contents
- * \param[in]   selected    callback used when the user double-clicked a file
+ * \param[in,out]   dialog      parent dialog
+ * \param[in]       func        function to use to retrieve image contents
+ * \param[in]       response    dialog response callback
  *
  * \return  GtkGrid
  */
@@ -314,4 +304,66 @@ void content_preview_widget_set_image(GtkWidget *widget, const char *path)
     if (model != NULL) {
         g_object_unref(model);
     }
+}
+
+
+/** \brief  Set index in directory
+ *
+ * \param[in]   widget      widget (unused)
+ * \param[in]   index       index in directory
+ *
+ * \return  bool
+ */
+gboolean content_preview_widget_set_index(GtkWidget *widget, int index)
+{
+    GtkTreeModel *model;
+    GtkTreePath *path;
+    GtkTreeSelection *selection;
+    gint row_count;
+
+    /* get model and check index */
+    model = gtk_tree_view_get_model(GTK_TREE_VIEW(content_view));
+    row_count = gtk_tree_model_iter_n_children(model, NULL);
+    /* check for valid index (-1 for "BLOCKS FREE") */
+    if (index < 1 || index >= row_count -1) {
+        return FALSE;
+    }
+
+    /* set new selection */
+    selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(content_view));
+    path = gtk_tree_path_new_from_indices(index, -1);
+    gtk_tree_selection_select_path(selection, path);
+    return TRUE;
+}
+
+/** \brief  Get index in directory
+ *
+ * \param[in]   widget      widget (unused)
+ *
+ * \return  index in directory
+ */
+int content_preview_widget_get_index(GtkWidget *widget)
+{
+    GtkTreeModel *model;
+    GtkTreeSelection *selection;
+    GtkTreeIter iter;
+    gint row_count;
+
+    /* get model and check index */
+    model = gtk_tree_view_get_model(GTK_TREE_VIEW(content_view));
+    row_count = gtk_tree_model_iter_n_children(model, NULL);
+
+    selection = gtk_tree_view_get_selection(GTK_TREE_VIEW(content_view));
+    if (gtk_tree_selection_get_selected(selection, &model, &iter)) {
+        int row;
+
+        gtk_tree_model_get(model, &iter, 1, &row, -1);
+#if 0
+        debug_gtk3("index = %d/%d\n", row, row_count);
+#endif
+        if ((row >= 0) && (row <= row_count)) {
+            return row;
+        }
+    }
+    return -1;
 }

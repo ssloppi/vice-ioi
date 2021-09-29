@@ -86,7 +86,7 @@ static uint8_t ross_io2_read(uint16_t addr)
 static int ross_dump(void)
 {
     mon_out("Size: %s, bank: %d\n",
-            (ross_is_32k) ? "32Kb" : "16Kb",
+            (ross_is_32k) ? "32KiB" : "16KiB",
             currbank);
     return 0;
 }
@@ -94,33 +94,35 @@ static int ross_dump(void)
 /* ---------------------------------------------------------------------*/
 
 static io_source_t ross_io1_device = {
-    CARTRIDGE_NAME_ROSS,
-    IO_DETACH_CART,
-    NULL,
-    0xde00, 0xdeff, 0xff,
-    0, /* read is never valid */
-    NULL,
-    ross_io1_read,
-    ross_io_peek,
-    ross_dump,
-    CARTRIDGE_ROSS,
-    0,
-    0
+    CARTRIDGE_NAME_ROSS,   /* name of the device */
+    IO_DETACH_CART,        /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE, /* does not use a resource for detach */
+    0xde00, 0xdeff, 0xff,  /* range for the device, address is ignored, reg:$de00, mirrors:$de01-$deff */
+    0,                     /* read is never valid */
+    NULL,                  /* NO store function */
+    NULL,                  /* NO poke function */
+    ross_io1_read,         /* read function */
+    ross_io_peek,          /* peek function */
+    ross_dump,             /* device state information dump function */
+    CARTRIDGE_ROSS,        /* cartridge ID */
+    IO_PRIO_NORMAL,        /* normal priority, device read needs to be checked for collisions */
+    0                      /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_t ross_io2_device = {
-    CARTRIDGE_NAME_ROSS,
-    IO_DETACH_CART,
-    NULL,
-    0xdf00, 0xdfff, 0xff,
-    0, /* read is never valid */
-    NULL,
-    ross_io2_read,
-    ross_io_peek,
-    ross_dump,
-    CARTRIDGE_ROSS,
-    0,
-    0
+    CARTRIDGE_NAME_ROSS,   /* name of the device */
+    IO_DETACH_CART,        /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE, /* does not use a resource for detach */
+    0xdf00, 0xdfff, 0xff,  /* range for the device, address is ignore, reg:$df00, mirrors:$df01-$dfff */
+    0,                     /* read is never valid */
+    NULL,                  /* NO store function */
+    NULL,                  /* NO poke function */
+    ross_io2_read,         /* read function */
+    ross_io_peek,          /* peek function */
+    ross_dump,             /* device state information dump function */
+    CARTRIDGE_ROSS,        /* cartridge ID */
+    IO_PRIO_NORMAL,        /* normal priority, device read needs to be checked for collisions */
+    0                      /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *ross_io1_list_item = NULL;
@@ -134,7 +136,7 @@ static const export_resource_t export_res = {
 
 void ross_config_init(void)
 {
-    cart_config_changed_slotmain(1, 1, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_16KGAME, CMODE_16KGAME, CMODE_READ);
 }
 
 void ross_config_setup(uint8_t *rawcart)
@@ -143,7 +145,7 @@ void ross_config_setup(uint8_t *rawcart)
     memcpy(&romh_banks[0x0000], &rawcart[0x2000], 0x2000);
     memcpy(&roml_banks[0x2000], &rawcart[0x4000], 0x2000);
     memcpy(&romh_banks[0x2000], &rawcart[0x6000], 0x2000);
-    cart_config_changed_slotmain(0, 0, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_8KGAME, CMODE_8KGAME, CMODE_READ);
     currbank = 0;
 }
 
@@ -222,7 +224,7 @@ void ross_detach(void)
    ARRAY | ROMH  |   0.0+  | 16384 BYTES of ROMH data
  */
 
-static char snap_module_name[] = "CARTROSS";
+static const char snap_module_name[] = "CARTROSS";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 
@@ -260,13 +262,13 @@ int ross_snapshot_read_module(snapshot_t *s)
     }
 
     /* Do not accept versions higher than current */
-    if (vmajor > SNAP_MAJOR || vminor > SNAP_MINOR) {
+    if (snapshot_version_is_bigger(vmajor, vminor, SNAP_MAJOR, SNAP_MINOR)) {
         snapshot_set_error(SNAPSHOT_MODULE_HIGHER_VERSION);
         goto fail;
     }
 
     /* new in 0.1 */
-    if (SNAPVAL(vmajor, vminor, 0, 1)) {
+    if (!snapshot_version_is_smaller(vmajor, vminor, 0, 1)) {
         if (SMR_B_INT(m, &ross_is_32k) < 0) {
             goto fail;
         }

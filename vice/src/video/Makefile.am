@@ -1,15 +1,23 @@
 AM_CPPFLAGS = \
+	@VICE_CPPFLAGS@ \
 	@ARCH_INCLUDES@ \
+	-I$(top_srcdir)/src/arch/shared \
 	-I$(top_builddir)/src \
 	-I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/raster \
 	-I$(top_srcdir)/src/joyport
 
+AM_CFLAGS = @VICE_CFLAGS@
+
+AM_CXXFLAGS = @VICE_CXXFLAGS@
+
+AM_LDFLAGS = @VICE_LDFLAGS@
+
+
 noinst_LIBRARIES = libvideo.a
 
 libvideo_a_SOURCES = \
-	ioi-video-output.c \
-	ioi-video-output.h \
+	render-common.h \
 	render1x1.c \
 	render1x1.h \
 	render1x1crt.c \
@@ -36,8 +44,6 @@ libvideo_a_SOURCES = \
 	render2x4crt.h \
 	renderscale2x.c \
 	renderscale2x.h \
-	renderyuv.c \
-	renderyuv.h \
 	video-canvas.c \
 	video-canvas.h \
 	video-cmdline-options.c \

@@ -1,8 +1,14 @@
+SUBDIRS = cart
+
 AM_CPPFLAGS = \
+	@VICE_CPPFLAGS@ \
 	@ARCH_INCLUDES@ \
+	-I$(top_srcdir)/src/arch/shared \
 	-I$(top_builddir)/src \
 	-I$(top_srcdir)/src \
+	-I$(top_srcdir)/src/plus4/cart \
 	-I$(top_srcdir)/src/core \
+	-I$(top_srcdir)/src/datasette \
 	-I$(top_srcdir)/src/drive \
 	-I$(top_srcdir)/src/sid \
 	-I$(top_srcdir)/src/tape \
@@ -13,13 +19,19 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/joyport \
 	-I$(top_srcdir)/src/userport \
 	-I$(top_srcdir)/src/raster \
+	-I$(top_srcdir)/src/rs232drv \
 	-I$(top_srcdir)/src/tapeport
+
+AM_CFLAGS = @VICE_CFLAGS@
+
+AM_CXXFLAGS = @VICE_CXXFLAGS@
+
+AM_LDFLAGS = @VICE_LDFLAGS@
+
 
 noinst_LIBRARIES = libplus4.a
 
 libplus4_a_SOURCES = \
-	debugcart.c \
-	debugcart.h \
 	digiblaster.c \
 	digiblaster.h \
 	plus4-cmdline-options.c \
@@ -34,8 +46,6 @@ libplus4_a_SOURCES = \
 	plus4acia.c \
 	plus4acia.h \
 	plus4bus.c \
-	plus4cart.c \
-	plus4cart.h \
 	plus4cpu.c \
 	plus4datasette.c \
 	plus4drive.c \
@@ -101,3 +111,8 @@ libplus4_a_SOURCES = \
 	ted.c \
 	ted.h \
 	tedtypes.h
+
+.PHONY: libplus4cart
+
+libplus4cart:
+	(cd cart; $(MAKE))

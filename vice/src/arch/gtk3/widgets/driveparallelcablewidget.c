@@ -36,14 +36,12 @@
 
 #include <gtk/gtk.h>
 
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
-#include "resources.h"
-#include "drive.h"
+#include "vice_gtk3.h"
 #include "drive-check.h"
-#include "machine.h"
+#include "drive.h"
 #include "drivewidgethelpers.h"
+#include "machine.h"
+#include "resources.h"
 
 #include "driveparallelcablewidget.h"
 
@@ -51,11 +49,11 @@
 /** \brief  List of possible parallel cables for c64
  */
 static const vice_gtk3_combo_entry_int_t parallel_cables_c64[] = {
-    { "None", DRIVE_PC_NONE },
-    { "Standard", DRIVE_PC_STANDARD },
-    { "Dolphin DOS 3", DRIVE_PC_DD3 },
-    { "Formel 64", DRIVE_PC_FORMEL64 },
-    { NULL, -1 }
+    { "None",           DRIVE_PC_NONE },
+    { "Standard",       DRIVE_PC_STANDARD },
+    { "Dolphin DOS 3",  DRIVE_PC_DD3 },
+    { "Formel 64",      DRIVE_PC_FORMEL64 },
+    { NULL,             -1 }
 };
 
 
@@ -67,9 +65,10 @@ static const vice_gtk3_combo_entry_int_t parallel_cables_plus4[] = {
     { NULL, -1 }
 };
 
+
 /** \brief  Create drive parallel cable widget
  *
- * \param[in]   unit    drive unit
+ * \param[in]   unit    drive unit (8-11)
  *
  * \return  GtkGrid
  */
@@ -85,8 +84,7 @@ GtkWidget *drive_parallel_cable_widget_create(int unit)
         list = parallel_cables_c64;
     }
 
-    grid = uihelpers_create_grid_with_label("Parallel cable", 1);
-    debug_gtk3("setting UnitNumber property to %d.", unit);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Parallel cable", 1);
     g_object_set_data(G_OBJECT(grid), "UnitNumber", GINT_TO_POINTER(unit));
 
     combo = vice_gtk3_resource_combo_box_int_new_sprintf(

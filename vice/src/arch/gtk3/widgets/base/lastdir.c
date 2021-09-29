@@ -3,9 +3,10 @@
  *
  * Simple code to handle last used directories for file dialogs.
  *
- * Since Gtk3 refuses to remember the last used directory for a file dialog
- * (or even presents a shitty 'last used files' list), we need something to
- * remember the last used directory on a per-dialog basis.
+ * Since Gtk3 refuses to remember the last used directory and the last used file
+ * for a file dialog (or even present a shitty 'last used files' list), we need
+ * something to remember the last used directory and last used file on a
+ * per-dialog basis.
  *
  * This code will handle that, with a very little extra code. Currently this
  * only works with GtkFileChooser-derived widgets, but that's basically all we
@@ -13,28 +14,29 @@
  *
  * The basic API is this:
  *
- * In the code using this API, declare a static `char *` variable to hold the
- * last used directory.
+ * In the code using this API, declare static `gchar *` variables to hold the
+ * last used directory and last used file.
  *
  * For example:
  * \code{.c}
- *  static *last_dir = NULL;
+ *  static gchar *last_dir = NULL;
+ *  static gchar *last_file = NULL;
  * \endcode
  *
  * In the dialog building code, add a call to lastdir_set():
  * \code{.c}
- *  lastdir_set(dialog, &last_dir);
+ *  lastdir_set(dialog, &last_dir, &last_file);
  * \endcode
  *
  * Whenever the last directory needs to be updated, for example when the user
  * has selected a file, add a call to lastdir_update():
  * \code{.c}
- *  lastdir_update(dialog, &last_dir);
+ *  lastdir_update(dialog, &last_dir, &last_file);
  * \endcode
  *
  * And finally when shutting down the dialog/UI, don't forget to call
  * \code{.c}
- * lastdir_shutdown(&last_dir);
+ * lastdir_shutdown(&last_dir, &last_file);
  * \endcode
  * to clean up the resources used.
  *
@@ -70,20 +72,22 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
 
-#include "debug_gtk3.h"
-
 #include "lastdir.h"
 
 
 /** \brief  Set directory of the GtkFileChooser \a widget using *\a last
  *
- * \param[in,out]   widget  GtkFileChooser widget
- * \param[in]       last    pointer to last directory string pointer
+ * \param[in,out]   widget      GtkFileChooser widget
+ * \param[in]       last_dir    pointer to last directory string pointer
+ * \param[in]       last_file   pointer to last file selected in directory
  */
-void lastdir_set(GtkWidget *widget, char **last)
+void lastdir_set(GtkWidget *widget, gchar **last_dir, gchar **last_file)
 {
-    if (last != NULL && *last != NULL) {
-        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(widget), *last);
+    if (last_dir != NULL && *last_dir != NULL) {
+        gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(widget), *last_dir);
+        if (last_file != NULL && *last_file != NULL) {
+            gtk_file_chooser_set_filename(GTK_FILE_CHOOSER(widget), *last_file);
+        }
     }
 }
 
@@ -92,35 +96,80 @@ void lastdir_set(GtkWidget *widget, char **last)
  *
  * Updates *\a last to the directory currently used by \a widget
  *
- * \param[in]   widget  GtkFileChooser widget
- * \param[out]  last    pointer to string pointer containing the last used ir
+ * \param[in]   widget      GtkFileChooser widget
+ * \param[out]  last_dir    pointer to string pointer containing the last used dir
+ * \param[out]  last_file   pointer to string pointer containing the last used file
  */
-void lastdir_update(GtkWidget *widget, char **last)
+void lastdir_update(GtkWidget *widget, gchar **last_dir, gchar **last_file)
 {
     gchar *new_dir;
+    gchar *new_file;
 
     new_dir = gtk_file_chooser_get_current_folder(GTK_FILE_CHOOSER(widget));
-    debug_gtk3("new dir = '%s'.", new_dir);
+    new_file = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
     if (new_dir != NULL) {
         /* clean up previous value */
-        if (*last != NULL) {
-            g_free(*last);
+        if (*last_dir != NULL) {
+            g_free(*last_dir);
         }
-        *last = new_dir;
+        *last_dir = new_dir;
+    }
+    if (new_file != NULL) {
+        if (*last_file != NULL) {
+            g_free(*last_file);
+        }
+        *last_file = new_file;
     }
 }
 
 
-/** \brief  Free memory used by *\a last
+/** \brief  Update \a last with \a path
  *
- * Clean up memory used by last used directory string, if any.
+ * Store new values for dir and filename freeing the old data.
  *
- * \param[in,out]   last    pointer to string pointer to free
+ * If `NULL` is passed the related object will only be freed and set to `NULL`.
+ *
+ * \param[in]   dirname     new directory
+ * \param[in]   last_dir    object to copy \a dirname to
+ * \param[in]   filename    new filename
+ * \param[in]   last_file   object to copy \a filename to
  */
-void lastdir_shutdown(char **last)
+void lastdir_update_raw(char *dirname, char **last_dir,
+                        char *filename, char **last_file)
 {
-    if (last != NULL && *last != NULL) {
-        g_free(*last);
-        *last = NULL;
+    if (*last_dir != NULL) {
+        g_free(*last_dir);
+        *last_dir = NULL;
+    }
+    if (dirname != NULL) {
+        *last_dir = g_strdup(dirname);
+    }
+
+    if (*last_file != NULL) {
+        g_free(*last_file);
+        *last_file = NULL;
+    }
+    if (filename != NULL) {
+        *last_file = g_strdup(filename);
+    }
+}
+
+
+/** \brief  Free memory used by *\a last_dir and \a last_file
+ *
+ * Clean up memory used by last used directory and filename.
+ *
+ * \param[in]   last_dir    location of last used directory
+ * \param[in]   last_file   location of last used filename
+ */
+void lastdir_shutdown(gchar **last_dir, gchar **last_file)
+{
+    if (last_dir != NULL) {
+        g_free(*last_dir);
+        *last_dir = NULL;
+    }
+    if (last_file != NULL) {
+        g_free(*last_file);
+        *last_file = NULL;
     }
 }

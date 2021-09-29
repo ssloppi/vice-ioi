@@ -39,9 +39,25 @@
 /* (All have 8, except CBM-II that has 6) */
 #define KBD_COLS    8
 
+/* negative rows/columns for extra keys */
+#define KBD_ROW_JOY_KEYMAP_A    -1
+#define KBD_ROW_JOY_KEYMAP_B    -2
+#define KBD_ROW_RESTORE_1       -3
+#define KBD_ROW_RESTORE_2       -3
+#define KBD_ROW_4080COLUMN      -4
+#define KBD_ROW_CAPSLOCK        -4
+#define KBD_ROW_JOY_KEYPAD      -5
+
+#define KBD_COL_RESTORE_1        0
+#define KBD_COL_RESTORE_2        1
+#define KBD_COL_4080COLUMN       0
+#define KBD_COL_CAPSLOCK         1
+
 /* joystick port attached keypad */
-#define KBD_JOY_KEYPAD_ROWS 5
-#define KDB_JOY_KEYPAD_COLS 4
+#define KBD_JOY_KEYPAD_ROWS      4
+#define KBD_JOY_KEYPAD_COLS      5
+
+#define KBD_JOY_KEYPAD_NUMKEYS   (KBD_JOY_KEYPAD_ROWS * KBD_JOY_KEYPAD_COLS)
 
 /* index to select the current keymap ("KeymapIndex") */
 #define KBD_INDEX_SYM     0
@@ -52,17 +68,25 @@
 #define KBD_INDEX_NUM     4
 
 /* the mapping of the host ("KeyboardMapping")
-   (keep in sync with table in keyboard.c) */
-#define KBD_MAPPING_US    0     /* "" (us mapping) */
+
+   CAUTION: keep in sync with constants in keyboard.h and code in
+            arch/shared/archdep_kbd_get_host_mapping.c and also with the
+            description of the KeyboardMapping resource in vice.texi
+*/
+#define KBD_MAPPING_US    0     /* "" (us mapping) this must be first (=0) always */
 #define KBD_MAPPING_UK    1     /* "uk" */
-#define KBD_MAPPING_DE    2     /* "de" */
-#define KBD_MAPPING_DA    3     /* "da" */
-#define KBD_MAPPING_NL    4     /* "nl" */
-#define KBD_MAPPING_NO    5     /* "no" */
-#define KBD_MAPPING_FI    6     /* "fi" */
+#define KBD_MAPPING_DA    2     /* "da" */
+#define KBD_MAPPING_NL    3     /* "nl" */
+#define KBD_MAPPING_FI    4     /* "fi" */
+#define KBD_MAPPING_FR    5     /* "fr" */
+#define KBD_MAPPING_DE    6     /* "de" */
 #define KBD_MAPPING_IT    7     /* "it" */
-#define KBD_MAPPING_LAST  7
-#define KBD_MAPPING_NUM   8
+#define KBD_MAPPING_NO    8     /* "no" */
+#define KBD_MAPPING_ES    9     /* "es" */
+#define KBD_MAPPING_SE    10    /* "se" */
+#define KBD_MAPPING_CH    11    /* "ch" */
+#define KBD_MAPPING_LAST  11
+#define KBD_MAPPING_NUM   12
 extern int keyboard_get_num_mappings(void);
 
 /* mapping info for GUIs */
@@ -73,6 +97,16 @@ typedef struct {
 } mapping_info_t;
 
 extern mapping_info_t *keyboard_get_info_list(void);
+extern int keyboard_is_keymap_valid(int sympos, int hosttype, int kbdtype);
+extern int keyboard_is_hosttype_valid(int hosttype);
+
+#define KBD_MOD_LSHIFT      (1 << 0)
+#define KBD_MOD_RSHIFT      (1 << 1)
+#define KBD_MOD_LCTRL       (1 << 2)
+#define KBD_MOD_RCTRL       (1 << 3)
+#define KBD_MOD_LALT        (1 << 4)
+#define KBD_MOD_RALT        (1 << 5)
+#define KBD_MOD_SHIFTLOCK   (1 << 6)
 
 struct snapshot_s;
 
@@ -95,9 +129,12 @@ extern int keyboard_set_keymap_index(int vak, void *param);
 extern int keyboard_set_keymap_file(const char *val, void *param);
 extern int keyboard_keymap_dump(const char *filename);
 
-extern void keyboard_key_pressed(signed long key);
-extern void keyboard_key_released(signed long key);
+extern void keyboard_key_pressed(signed long key, int mod);
+extern void keyboard_key_released(signed long key, int mod);
 extern void keyboard_key_clear(void);
+
+extern int keyboard_get_shiftlock(void);
+extern void keyboard_set_shiftlock(int state);
 
 typedef void (*key_ctrl_column4080_func_t)(void);
 extern void keyboard_register_column4080_key(key_ctrl_column4080_func_t func);
@@ -111,12 +148,13 @@ extern void keyboard_register_joy_keypad(key_joy_keypad_func_t func);
 typedef void (*keyboard_machine_func_t)(int *);
 extern void keyboard_register_machine(keyboard_machine_func_t func);
 
+/* switch to alternative set (x128) */
 extern void keyboard_alternative_set(int alternative);
 
 /* These ugly externs will go away sooner or later.  */
 extern int keyarr[KBD_ROWS];
 extern int rev_keyarr[KBD_COLS];
-extern int keyboard_shiftlock;
+extern int keyboard_shiftlock;      /* FIXME: c64 and c128 CIA1 code uses this */
 
 extern int keyboard_resources_init(void);
 extern int keyboard_cmdline_options_init(void);

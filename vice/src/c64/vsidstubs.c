@@ -39,18 +39,22 @@
 #include "cartridge.h"
 #include "cbmdos.h"
 #include "cia.h"
-#include "imagecontents/diskcontents.h"
+#include "diskcontents.h"
+#include "diskcontents-block.h"
 #include "diskimage.h"
 #include "drive.h"
+#include "drive-check.h"
 #include "driveimage.h"
 #include "drivetypes.h"
 #include "fileio.h"
 #include "fsdevice.h"
+#include "fsdevice-filename.h"
 #include "gfxoutput.h"
 #include "iecbus.h"
 #include "iecdrive.h"
 #include "imagecontents.h"
 #include "midi.h"
+#include "machine.h"
 #include "machine-bus.h"
 #include "machine-drive.h"
 #include "machine-printer.h"
@@ -58,14 +62,16 @@
 #include "snapshot.h"
 #include "tap.h"
 #include "tape.h"
+#include "tapecart.h"
 #include "tapeport.h"
-#include "imagecontents/tapecontents.h"
+#include "tapecontents.h"
 #include "tape-snapshot.h"
-#include "vdrive/vdrive.h"
-#include "vdrive/vdrive-bam.h"
-#include "vdrive/vdrive-command.h"
-#include "vdrive/vdrive-iec.h"
-#include "vdrive/vdrive-internal.h"
+#include "userport.h"
+#include "vdrive.h"
+#include "vdrive-bam.h"
+#include "vdrive-command.h"
+#include "vdrive-iec.h"
+#include "vdrive-internal.h"
 #include "vicii-phi1.h"
 #include "ds1202_1302.h"
 
@@ -84,12 +90,12 @@ void c64_256k_cia_set_vbank(int ciabank)
     Drive related
 *******************************************************************************/
 
-int machine_drive_image_attach(struct disk_image_s *image, unsigned int unit)
+int machine_drive_image_attach(struct disk_image_s *image, unsigned int unit, unsigned int drive)
 {
     return -1;
 }
 
-int machine_drive_image_detach(struct disk_image_s *image, unsigned int unit)
+int machine_drive_image_detach(struct disk_image_s *image, unsigned int unit, unsigned int drive)
 {
     return -1;
 }
@@ -164,6 +170,10 @@ int drive_check_iec(int type)
     return 0;
 }
 
+int drive_check_image_format(unsigned int format, unsigned int dnr)
+{
+    return -1;
+}
 
 /*******************************************************************************
     Cartridge system
@@ -180,6 +190,10 @@ int cartridge_attach_image(int type, const char *filename)
     return -1;
 }
 
+void cartridge_detach_image(int type)
+{
+}
+
 uint8_t *ultimax_romh_phi1_ptr(uint16_t addr)
 {
     return mem_phi;
@@ -188,6 +202,10 @@ uint8_t *ultimax_romh_phi1_ptr(uint16_t addr)
 uint8_t *ultimax_romh_phi2_ptr(uint16_t addr)
 {
     return mem_phi;
+}
+
+void cartridge_unset_default(void)
+{
 }
 
 midi_interface_t midi_interface[] = {
@@ -411,6 +429,21 @@ const char *tape_get_file_name(void)
     return NULL;
 }
 
+
+/*****************************************************************************
+ *  tapecart                                                                 *
+ ****************************************************************************/
+
+int tapecart_is_valid(const char *filename)
+{
+    return 0;   /* FALSE */
+}
+
+int tapecart_attach_tcrt(const char *filename, void *unused)
+{
+    return -1;
+}
+
 /*******************************************************************************
     imagecontents
 *******************************************************************************/
@@ -449,27 +482,7 @@ image_contents_t *tapecontents_read(const char *file_name)
     return NULL;
 }
 
-image_contents_t *diskcontents_read(const char *file_name, unsigned int unit)
-{
-    return NULL;
-}
-
-image_contents_t *diskcontents_read_unit8(const char *file_name)
-{
-    return NULL;
-}
-
-image_contents_t *diskcontents_read_unit9(const char *file_name)
-{
-    return NULL;
-}
-
-image_contents_t *diskcontents_read_unit10(const char *file_name)
-{
-    return NULL;
-}
-
-image_contents_t *diskcontents_read_unit11(const char *file_name)
+image_contents_t *diskcontents_block_read(struct vdrive_s *vdrive, int part)
 {
     return NULL;
 }
@@ -482,7 +495,9 @@ void fileio_close(fileio_info_t *info)
 {
 }
 
-fileio_info_t *fileio_open(const char *file_name, const char *path, unsigned int format, unsigned int command, unsigned int type)
+fileio_info_t *fileio_open(const char *file_name, const char *path,
+                                unsigned int format, unsigned int command,
+                                unsigned int type, int *reclenp)
 {
     return NULL;
 }
@@ -530,7 +545,7 @@ void fsdevice_shutdown(void)
 {
 }
 
-int fsdevice_attach(unsigned int device, const char *name)
+int fsdevice_attach(unsigned int device, unsigned int drive, const char *name)
 {
     return 0;
 }
@@ -539,6 +554,10 @@ void fsdevice_set_directory(char *filename, unsigned int unit)
 {
 }
 
+int fsdevice_limit_namelength(vdrive_t *vdrive, uint8_t *name)
+{
+    return 0;
+}
 
 /*******************************************************************************
     diskimage
@@ -593,6 +612,11 @@ int disk_image_fsimage_create(const char *name, unsigned int type)
     return 0;
 }
 
+int disk_image_fsimage_create_dxm(const char *name, const char *dname, unsigned int type)
+{
+    return 0;
+}
+
 int disk_image_write_sector(disk_image_t *image, const uint8_t *buf, const disk_addr_t *dadr)
 {
     return 0;
@@ -618,11 +642,11 @@ int disk_image_write_p64_image(const disk_image_t *image)
     return 0;
 }
 
-void disk_image_attach_log(const disk_image_t *image, signed int lognum, unsigned int unit)
+void disk_image_attach_log(const disk_image_t *image, signed int lognum, unsigned int unit, unsigned int drive)
 {
 }
 
-void disk_image_detach_log(const disk_image_t *image, signed int lognum, unsigned int unit)
+void disk_image_detach_log(const disk_image_t *image, signed int lognum, unsigned int unit, unsigned int drive)
 {
 }
 
@@ -668,7 +692,7 @@ unsigned int machine_bus_device_type_get(unsigned int unit)
     return 0;
 }
 
-void machine_bus_status_truedrive_set(unsigned int enable)
+void machine_bus_status_truedrive_set(unsigned int unit, unsigned int enable)
 {
 }
 
@@ -676,7 +700,7 @@ void machine_bus_status_drivetype_set(unsigned int unit, unsigned int enable)
 {
 }
 
-void machine_bus_status_virtualdevices_set(unsigned int enable)
+void machine_bus_status_virtualdevices_set(unsigned int unit, unsigned int enable)
 {
 }
 
@@ -717,7 +741,7 @@ uint8_t iecbus_device_read(void)
     drive
 *******************************************************************************/
 
-drive_context_t *drive_context[DRIVE_NUM];
+diskunit_context_t *diskunit_context[NUM_DISK_UNITS];
 
 void drive_setup_context(void)
 {
@@ -735,25 +759,25 @@ void drive_shutdown(void)
 {
 }
 
-int drive_image_detach(disk_image_t *image, unsigned int unit)
+int drive_image_detach(disk_image_t *image, unsigned int unit, unsigned int drive)
 {
     return 0;
 }
 
-int drive_image_attach(disk_image_t *image, unsigned int unit)
+int drive_image_attach(disk_image_t *image, unsigned int unit, unsigned int drive)
 {
     return 0;
 }
 
-void drive_set_last_read(unsigned int track, unsigned int sector, uint8_t *buffer, struct drive_context_s *drv)
+void drive_set_last_read(unsigned int track, unsigned int sector, uint8_t *buffer, struct diskunit_context_s *drv)
 {
 }
 
-void drive_set_disk_memory(uint8_t *id, unsigned int track, unsigned int sector, struct drive_context_s *drv)
+void drive_set_disk_memory(uint8_t *id, unsigned int track, unsigned int sector, struct diskunit_context_s *drv)
 {
 }
 
-void drive_cpu_execute_one(drive_context_t *drv, CLOCK clk_value)
+void drive_cpu_execute_one(diskunit_context_t *drv, CLOCK clk_value)
 {
 }
 
@@ -791,6 +815,16 @@ int drive_get_disk_drive_type(int dnr)
     return 0;
 }
 
+int drive_is_dualdrive_by_devnr(int devnr)
+{
+    return 0;
+}
+
+int drive_get_type_by_devnr(int devnr)
+{
+    return 0;
+}
+
 /*******************************************************************************
     vdrive
 *******************************************************************************/
@@ -813,21 +847,21 @@ int vdrive_iec_attach(unsigned int unit, const char *name)
     return 0;
 }
 
-int vdrive_bam_get_disk_id(unsigned int unit, uint8_t *id)
+int vdrive_bam_get_disk_id(unsigned int unit, unsigned int drive, uint8_t *id)
 {
     return 0;
 }
 
-int vdrive_bam_set_disk_id(unsigned int unit, uint8_t *id)
+int vdrive_bam_set_disk_id(unsigned int unit, unsigned int drive, uint8_t *id)
 {
     return 0;
 }
 
-void vdrive_detach_image(disk_image_t *image, unsigned int unit, vdrive_t *vdrive)
+void vdrive_detach_image(disk_image_t *image, unsigned int unit, unsigned int drive, vdrive_t *vdrive)
 {
 }
 
-int vdrive_attach_image(disk_image_t *image, unsigned int unit, vdrive_t *vdrive)
+int vdrive_attach_image(disk_image_t *image, unsigned int unit, unsigned int drive, vdrive_t *vdrive)
 {
     return 0;
 }
@@ -866,14 +900,19 @@ int vdrive_command_execute(vdrive_t *vdrive, const uint8_t *buf, unsigned int le
     return 0;
 }
 
-int vdrive_write_sector(vdrive_t *vdrive, const uint8_t *buf, unsigned int track, unsigned int sector)
+int vdrive_ext_write_sector(vdrive_t *vdrive, int drive, const uint8_t *buf, unsigned int track, unsigned int sector)
 {
     return 0;
 }
 
-int vdrive_read_sector(vdrive_t *vdrive, uint8_t *buf, unsigned int track, unsigned int sector)
+int vdrive_ext_read_sector(vdrive_t *vdrive, int drive, uint8_t *buf, unsigned int track, unsigned int sector)
 {
     return 0;
+}
+
+struct disk_image_s *vdrive_get_image(vdrive_t *vdrive, unsigned int drive)
+{
+    return NULL;
 }
 
 /*******************************************************************************
@@ -901,6 +940,16 @@ void tapeport_snapshot_register(tapeport_snapshot_t *snapshot)
 {
 }
 
+int tape_seek_to_offset(tape_image_t *tape_image, unsigned long offset)
+{
+    return 0;
+}
+
+int tap_seek_to_offset(tap_t *tap, unsigned long offset)
+{
+    return 0;
+}
+
 int iec_available_busses(void)
 {
     return 0;
@@ -919,3 +968,37 @@ int loader_get_drive_true_emulation()
     return loader_true_drive;
 }
 #endif
+
+int machine_get_num_keyboard_types(void)
+{
+    return 0;
+}
+
+kbdtype_info_t *machine_get_keyboard_info_list(void)
+{
+    return NULL;
+}
+
+void drive_cpu_trigger_reset_button(unsigned int dnr, unsigned int button)
+{
+}
+
+int drive_has_buttons(unsigned int dnr)
+{
+    return 0;
+}
+
+unsigned int drive_check_dual(unsigned int type)
+{
+    return 0;
+}
+
+userport_desc_t *userport_get_valid_devices(int sort)
+{
+    return NULL;
+}
+
+const char *userport_get_device_type_desc(int type)
+{
+    return NULL;
+}

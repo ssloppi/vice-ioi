@@ -1,5 +1,3 @@
-/* vim: set et ts=4 sw=4 sts=4 fdm=marker syntax=c.doxygen: */
-
 /** \file   src/lib/psid.c
  * \brief   PSID/RSID file handling
  *
@@ -11,7 +9,7 @@
 
 /*
  *  HVSClib - a library to work with High Voltage SID Collection files
- *  Copyright (C) 2018  Bas Wassink <b.wassink@ziggo.nl>
+ *  Copyright (C) 2018i-2021  Bas Wassink <b.wassink@ziggo.nl>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -46,7 +44,7 @@ static const uint8_t psid_magic[HVSC_PSID_MAGIC_LEN] = { 0x50, 0x53, 0x49, 0x44 
 /** \brief  Magic bytes to indicate an RSID file
  * \ingroup psid
  */
-static const uint8_t rsid_magic[HVSC_PSID_MAGIC_LEN] = { 0x50, 0x53, 0x49, 0x44 };
+static const uint8_t rsid_magic[HVSC_PSID_MAGIC_LEN] = { 0x52, 0x53, 0x49, 0x44 };
 
 
 /** \brief  SID models
@@ -412,7 +410,8 @@ void hvsc_psid_dump(const hvsc_psid_t *handle)
 
     /* dump header data on stdout */
     printf("file name       : %s\n", handle->path);
-    printf("file size       : %" PRI_SIZE_T "\n", handle->size);
+    /* can't use PRI_SIZE_T thanks to Windows here: */
+    printf("file size       : %lu\n", (unsigned long)(handle->size));
     printf("magic           : %s\n", magic);
     printf("version         : %d\n", (int)handle->version);
     printf("data offset     : $%04x\n", handle->data_offset);
@@ -456,8 +455,8 @@ void hvsc_psid_dump(const hvsc_psid_t *handle)
     }
 
     /* page/driver info */
-    printf("start page      : $%04x\n", handle->start_page * 256);
-    printf("page length     : $%04x\n", handle->page_length * 256);
+    printf("start page      : $%04x\n", handle->start_page * 256U);
+    printf("page length     : $%04x\n", handle->page_length * 256U);
 }
 
 

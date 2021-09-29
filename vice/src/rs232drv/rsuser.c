@@ -37,21 +37,19 @@
 #include <stdio.h>
 
 #include "alarm.h"
-#include "clkguard.h"
 #include "cmdline.h"
+#include "joyport.h"
 #include "log.h"
 #include "maincpu.h"
 #include "resources.h"
 #include "rs232drv.h"
 #include "rsuser.h"
 #include "types.h"
+#include "userport.h"
 
 static int fd = -1;
 
 static alarm_t *rsuser_alarm = NULL;
-
-static int dtr;
-static int rts;
 
 static int rxstate;
 static uint8_t rxdata;
@@ -68,11 +66,12 @@ static CLOCK clk_end_tx = 0;
 static void (*start_bit_trigger)(void);
 static void (*byte_rx_func)(uint8_t);
 
-static void clk_overflow_callback(CLOCK sub, void *data);
-
 static void int_rsuser(CLOCK offset, void *data);
 
 #undef DEBUG
+
+/* #define LOG_MODEM_STATUS */
+
 
 #define RSUSER_TICKS    21111
 
@@ -99,10 +98,48 @@ static void int_rsuser(CLOCK offset, void *data);
 #endif
 
 /***********************************************************************
+ * control lines
+ */
+
+static int dtr = 0;
+static int rts = 0;
+
+/***********************************************************************
+ * userport interface handling
+ */
+
+/* some prototypes are needed */
+static void rsuser_tx_byte(uint8_t b);
+static void rsuser_write_ctrl(uint8_t b, int pulse);
+static uint8_t rsuser_read_ctrl(uint8_t orig);
+static void rsuser_set_tx_bit(uint8_t b);
+static int userport_rs232_enable(int value);
+
+static userport_device_t rs232_device = {
+    "Userport RS232/Modem",     /* device name */
+    JOYSTICK_ADAPTER_ID_NONE,   /* NOT a joystick adapter */
+    USERPORT_DEVICE_TYPE_MODEM, /* device is a modem */
+    userport_rs232_enable,      /* enable function */
+    rsuser_read_ctrl,           /* read pb0-pb7 function */
+    rsuser_write_ctrl,          /* store pb0-pb7 function */
+    NULL,                       /* NO read pa2 pin function */
+    rsuser_set_tx_bit,          /* store pa2 pin function */
+    NULL,                       /* NO read pa3 pin function */
+    NULL,                       /* NO store pa3 pin function */
+    0,                          /* pc pin is NOT needed */
+    rsuser_tx_byte,             /* store sp1 pin function */
+    NULL,                       /* NO read sp1 pin function */
+    NULL,                       /* NO store sp2 pin function */
+    NULL,                       /* NO read sp2 pin function */
+    NULL,                       /* NO snapshot write function */
+    NULL                        /* NO snapshot read function */
+};
+
+/***********************************************************************
  * resource handling
  */
 
-int rsuser_enabled = 0;                 /* enable flag */
+static int rsuser_enabled = 0;                 /* enable flag */
 static int rsuser_baudrate = 300;       /* saves the baud rate given */
 static int char_clk_ticks = 0;          /* clk ticks per character */
 static int bit_clk_ticks = 0;           /* clk ticks per character */
@@ -118,11 +155,11 @@ static void calculate_baudrate(void)
     }
     bit_clk_ticks = (int)((double)(char_clk_ticks) / 10.0);
 
-    LOG_DEBUG(("RS232: %d cycles per char (cycles_per_sec=%ld).",
+    LOG_DEBUG(("RS232 calculate_baudrate: %d cycles per char (cycles_per_sec=%ld).",
                char_clk_ticks, cycles_per_sec));
 }
 
-static int set_enable(int value, void *param)
+static int userport_rs232_enable(int value)
 {
     int newval = value ? 1 : 0;
 
@@ -143,6 +180,10 @@ static int set_enable(int value, void *param)
     }
 
     rsuser_enabled = newval;
+    
+    LOG_DEBUG(("RS232 set_enable: enabled:%d fd:%d dtr:%d rts:%d",
+        rsuser_enabled, fd, dtr, rts
+    ));
 
     calculate_baudrate();
 
@@ -178,9 +219,7 @@ static int set_up_device(int val, void *param)
 }
 
 static const resource_int_t resources_int[] = {
-    { "RsUserEnable", 0, RES_EVENT_STRICT, (resource_value_t)0,
-      &rsuser_enabled, set_enable, NULL },
-    { "RsUserBaud", 300, RES_EVENT_NO, NULL,
+    { "RsUserBaud", 2400, RES_EVENT_NO, NULL,
       &rsuser_baudrate, set_baudrate, NULL },
     { "RsUserDev", 0, RES_EVENT_NO, NULL,
       &rsuser_device, set_up_device, NULL },
@@ -189,17 +228,15 @@ static const resource_int_t resources_int[] = {
 
 int rsuser_resources_init(void)
 {
+    if (userport_device_register(USERPORT_DEVICE_RS232_MODEM, &rs232_device) < 0) {
+        return -1;
+    }
+
     return resources_register_int(resources_int);
 }
 
 static const cmdline_option_t cmdline_options[] =
 {
-    { "-rsuser", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
-      NULL, NULL, "RsUserEnable", (void *)1,
-      NULL, "Enable RS232 userport emulation" },
-    { "+rsuser", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
-      NULL, NULL, "RsUserEnable", (void *)0,
-      NULL, "Disable RS232 userport emulation" },
     { "-rsuserbaud", SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
       NULL, NULL, "RsUserBaud", NULL,
       "<baud>", "Set the baud rate of the RS232 userport emulation." },
@@ -225,6 +262,12 @@ static const unsigned int masks[] =
     0x1000, 0x2000, 0x4000, 0x8000
 };
 
+void rsuser_change_timing(long cycles)
+{
+    cycles_per_sec = cycles;
+    calculate_baudrate();
+}
+
 void rsuser_init(long cycles, void (*startfunc)(void), void (*bytefunc)(uint8_t))
 {
     int i, j;
@@ -232,10 +275,7 @@ void rsuser_init(long cycles, void (*startfunc)(void), void (*bytefunc)(uint8_t)
 
     rsuser_alarm = alarm_new(maincpu_alarm_context, "RSUser", int_rsuser, NULL);
 
-    clk_guard_add_callback(maincpu_clk_guard, clk_overflow_callback, NULL);
-
-    cycles_per_sec = cycles;
-    calculate_baudrate();
+    rsuser_change_timing(cycles);
 
     start_bit_trigger = startfunc;
     byte_rx_func = bytefunc;
@@ -256,6 +296,8 @@ void rsuser_init(long cycles, void (*startfunc)(void), void (*bytefunc)(uint8_t)
     rts = RTS_OUT;      /* inactive */
     fd = -1;
 
+    LOG_DEBUG(("rsuser_init: fd:%d dtr:%d rts:%d", fd, dtr, rts));
+    
     buf = (unsigned int)(~0); /* all 1s */
     valid = 0;
 }
@@ -287,14 +329,32 @@ static void rsuser_setup(void)
     alarm_set(rsuser_alarm, maincpu_clk + char_clk_ticks / 8);
 }
 
-void rsuser_write_ctrl(uint8_t b)
+/* called by VIA/CIA when cpu writes to user port */
+static void rsuser_write_ctrl(uint8_t status, int pulse)
 {
-    int new_dtr = b & DTR_OUT;  /* = 0 is active, != 0 is inactive */
-    int new_rts = b & RTS_OUT;  /* = 0 is active, != 0 is inactive */
+    enum rs232handshake_out modem_status = 0;
+    int new_dtr = status & DTR_OUT;  /* = 0 is active, != 0 is inactive */
+    int new_rts = status & RTS_OUT;  /* = 0 is active, != 0 is inactive */
+#ifdef LOG_MODEM_STATUS
+    static int oldstatus = -1;
+#endif    
 
+#ifdef LOG_MODEM_STATUS
+    if (status != oldstatus) {
+        printf("rsuser_write_ctrl(fd:%d) 1: status:%02x dtr:%d rts:%d\n", 
+               fd, status, dtr ? 1 : 0, rts ? 1 : 0);
+    }
+#endif
+    
     if (rsuser_enabled) {
         if (dtr && !new_dtr) {
+            /* DTR low->high transition, set up userport, set DTR active */
             rsuser_setup();
+            if (fd != -1) {
+                /* all handshake lines are inverted by the RS232 interface */
+                modem_status |= dtr ? 0 : RS232_HSO_DTR;
+                rs232drv_set_status(fd, modem_status);
+            }
         }
         if (new_dtr && !dtr && fd != -1) {
 #if 0   /* This is a bug in the X-line handshake of the C64... */
@@ -303,11 +363,27 @@ void rsuser_write_ctrl(uint8_t b)
             rs232drv_close(fd);
             fd = -1;
 #endif
+            /* all handshake lines are inverted by the RS232 interface */
+            modem_status |= dtr ? 0 : RS232_HSO_DTR;
+            rs232drv_set_status(fd, modem_status);
         }
     }
 
     dtr = new_dtr;
     rts = new_rts;
+
+#ifdef LOG_MODEM_STATUS
+    if (status != oldstatus) {
+        printf("rsuser_write_ctrl(fd:%d) 2: status:%02x dtr:%d rts:%d modem_status:%02x cts:%d dsr:%d dcd:%d ri:%d\n", 
+               fd, status, dtr ? 1 : 0, rts ? 1 : 0, modem_status, 
+               modem_status & RS232_HSI_CTS ? 1 : 0,
+               modem_status & RS232_HSI_DSR ? 1 : 0,
+               modem_status & RS232_HSI_DCD ? 1 : 0,
+               modem_status & RS232_HSI_RI ? 1 : 0
+              );
+        oldstatus = status;
+    }
+#endif
 }
 
 static void check_tx_buffer(void)
@@ -320,7 +396,7 @@ static void check_tx_buffer(void)
 
     if (valid >= 10) {     /* (valid-1)-th bit is not set = start bit! */
         if (!(buf & masks[valid - 10])) {
-            log_error(LOG_DEFAULT, "Frame error!");
+            log_error(LOG_DEFAULT, "rsuser: framing mismatch - outgoing baudrates ok?");
         } else {
             c = (buf >> (valid - 9)) & 0xff;
             if (fd != -1) {
@@ -364,7 +440,7 @@ static void keepup_tx_buffer(void)
     }
 }
 
-void rsuser_set_tx_bit(int b)
+static void rsuser_set_tx_bit(uint8_t b)
 {
     LOG_DEBUG(("rsuser_set_tx(clk=%d, clk_start_tx=%d, b=%d).",
                maincpu_clk, clk_start_tx, b));
@@ -379,7 +455,7 @@ void rsuser_set_tx_bit(int b)
 
     /* feeds the output buffer with enough bits till clk */
     keepup_tx_buffer();
-    txbit = b;
+    txbit = b << 2;
 
     if (!clk_start_tx && !b) {
         /* the clock where we start sampling - in the middle of the bit */
@@ -393,9 +469,10 @@ void rsuser_set_tx_bit(int b)
     }
 }
 
-uint8_t rsuser_get_rx_bit(void)
+static uint8_t rsuser_get_rx_bit(void)
 {
-    int bit = 0, byte = 1;
+    CLOCK bit = 0;
+    int byte = 1;
     LOG_DEBUG_TIMING_RX(("rsuser_get_rx_bit(clk=%d, clk_start_rx=%d).",
                          maincpu_clk, clk_start_rx));
 
@@ -419,12 +496,52 @@ uint8_t rsuser_get_rx_bit(void)
     return byte;
 }
 
-uint8_t rsuser_read_ctrl(uint8_t b)
+/* called by VIA/CIA when cpu reads from user port */
+static uint8_t rsuser_read_ctrl(uint8_t orig)
 {
-    return b & (rsuser_get_rx_bit() | CTS_IN | (rsuser_baudrate > 2400 ? 0 : DCD_IN));
+    uint8_t b = orig;
+    enum rs232handshake_in modem_status = rs232drv_get_status(fd);
+    uint8_t status = 0;
+#ifdef LOG_MODEM_STATUS
+    static int oldstatus = -1;
+#endif    
+#if 0
+    if (status != oldstatus) {
+        printf("rsuser_read_ctrl(fd:%d) 1: mask:%02x modem_status:%02x cts:%d dsr:%d dcd:%d ri:%d\n", 
+               fd, b, modem_status, modem_status & RS232_HSI_CTS ? 1 : 0,
+               modem_status & RS232_HSI_DSR ? 1 : 0,
+               modem_status & RS232_HSI_DCD ? 1 : 0,
+               modem_status & RS232_HSI_RI ? 1 : 0
+              );
+    }
+#endif    
+    /* all handshake lines are inverted by the RS232 interface */
+    if (!(modem_status & RS232_HSI_CTS)) {
+        status |= CTS_IN;
+    }
+    if (!(modem_status & RS232_HSI_DCD)) {
+        if (!(rsuser_baudrate > 2400)) {
+            status |= DCD_IN;
+        }
+    }
+    if (!(modem_status & RS232_HSI_DSR)) {
+        status |= DSR_IN;
+    }
+#ifdef LOG_MODEM_STATUS
+    if (status != oldstatus) {
+        printf("rsuser_read_ctrl(fd:%d): mask:%02x status:%02x cts:%d dsr:%d dcd:%d ri:%d\n", 
+               fd, b, status, modem_status & RS232_HSI_CTS ? 1 : 0,
+               modem_status & RS232_HSI_DSR ? 1 : 0,
+               modem_status & RS232_HSI_DCD ? 1 : 0,
+               modem_status & RS232_HSI_RI ? 1 : 0
+              );
+        oldstatus = status;
+    }
+#endif    
+    return b & (rsuser_get_rx_bit() | status);
 }
 
-void rsuser_tx_byte(uint8_t b)
+static void rsuser_tx_byte(uint8_t b)
 {
     buf = (buf << 8) | b;
     valid += 8;
@@ -459,18 +576,5 @@ static void int_rsuser(CLOCK offset, void *data)
             clk_start_rx = 0;
             alarm_set(rsuser_alarm, maincpu_clk + char_clk_ticks / 8);
             break;
-    }
-}
-
-static void clk_overflow_callback(CLOCK sub, void *data)
-{
-    if (clk_start_tx) {
-        clk_start_tx -= sub;
-    }
-    if (clk_start_rx) {
-        clk_start_rx -= sub;
-    }
-    if (clk_start_bit) {
-        clk_start_bit -= sub;
     }
 }
