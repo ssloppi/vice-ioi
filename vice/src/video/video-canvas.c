@@ -48,6 +48,7 @@
 #include "video-render.h"
 #include "video.h"
 #include "viewport.h"
+#include "ioi-video-output.h"
 
 #define TRACKED_CANVAS_MAX 2
 
@@ -63,6 +64,7 @@ static video_canvas_t *tracked_canvas[TRACKED_CANVAS_MAX];
 video_canvas_t *video_canvas_init(void)
 {
     int i;
+    ioi_video_output_init();
     video_canvas_t *canvas;
 
     canvas = lib_calloc(1, sizeof(video_canvas_t));
@@ -93,6 +95,7 @@ video_canvas_t *video_canvas_init(void)
 void video_canvas_shutdown(video_canvas_t *canvas)
 {
     int i;
+    ioi_video_output_close();
 
     if (canvas != NULL) {
         /* Remove canvas from tracking */
@@ -135,6 +138,8 @@ void video_canvas_render(video_canvas_t *canvas, uint8_t *trg, int width,
                       trg, width, height, xs, ys, xt, yt,
                       canvas->draw_buffer->draw_buffer_width, pitcht,
                       viewport);
+
+    ioi_video_output_update(trg, pitcht);
 }
 
 /** \brief Force refresh all tracked canvases.
