@@ -31,6 +31,7 @@
 
 #include "attach.h"
 #include "autostart.h"
+#include "log.h"
 #include "tape.h"
 #include "debug_gtk3.h"
 #include "basedialogs.h"
@@ -38,6 +39,7 @@
 #include "filechooserhelpers.h"
 #include "imagecontents.h"
 #include "lastdir.h"
+#include "resources.h"
 #include "tapecontents.h"
 #include "ui.h"
 #include "uimachinewindow.h"
@@ -53,16 +55,25 @@ static ui_file_filter_t filters[] = {
     { NULL, NULL }
 };
 
+/** \brief  Reference to the preview widget
+ */
 static GtkWidget *preview_widget = NULL;
 
 
 /** \brief  Last directory used
  *
- * When a taoe is attached, this is set to the directory of that file. Since
+ * When a tape is attached, this is set to the directory of that file. Since
  * it's heap-allocated by Gtk3, it must be freed with a call to
  * ui_tape_attach_shutdown() on emulator shutdown.
  */
 static gchar *last_dir = NULL;
+
+/** \brief  Last filename used */
+static gchar *last_file = NULL;
+
+/** \brief  Reference to the custom 'Autostart' button
+ */
+static GtkWidget *autostart_button;
 
 
 /** \brief  Handler for the "update-preview" event
@@ -79,10 +90,11 @@ static void on_update_preview(GtkFileChooser *chooser, gpointer data)
     if (file != NULL) {
         path = g_file_get_path(file);
         if (path != NULL) {
-            debug_gtk3("called with '%s'.", path);
+            gchar *path_locale = file_chooser_convert_to_locale(path);
 
-            content_preview_widget_set_image(preview_widget, path);
-           g_free(path);
+            content_preview_widget_set_image(preview_widget, path_locale);
+            g_free(path);
+            g_free(path_locale);
         }
         g_object_unref(file);
     }
@@ -99,10 +111,83 @@ static void on_hidden_toggled(GtkWidget *widget, gpointer user_data)
     int state;
 
     state = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
-    debug_gtk3("show hidden files: %s.", state ? "enabled" : "disabled");
 
     gtk_file_chooser_set_show_hidden(GTK_FILE_CHOOSER(user_data), state);
 }
+
+
+/** \brief  Trigger autostart
+ *
+ * \param[in]   widget      dialog
+ * \param[in]   index       file index in the directory preview
+ * \param[in]   autostart   issue "RUN:" after loading
+ */
+static void do_autostart(GtkWidget *widget, int index, int autostart)
+{
+    gchar *filename;
+    gchar *filename_locale;
+
+    lastdir_update(widget, &last_dir, &last_file);
+    filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
+
+    filename_locale = file_chooser_convert_to_locale(filename);
+    if (autostart_tape(
+                filename_locale,
+                NULL,   /* program name */
+                index,
+                autostart ? AUTOSTART_MODE_RUN : AUTOSTART_MODE_LOAD) < 0) {
+        /* oeps */
+        log_error(LOG_ERR, "autostarting tape '%s' failed.", filename_locale);
+    }
+    g_free(filename_locale);
+}
+
+
+/** \brief  attach image
+ *
+ * \param[in]   widget      dialog
+ * \param[in]   user_data   file index in the directory preview
+ */
+static void do_attach(GtkWidget *widget, gpointer user_data)
+{
+    gchar *filename;
+    gchar *filename_locale;
+
+    lastdir_update(widget, &last_dir, &last_file);
+    filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
+    /* ui_message("Opening file '%s' ...", filename); */
+
+    filename_locale = file_chooser_convert_to_locale(filename);
+
+    if (tape_image_attach(1, filename_locale) < 0) {
+        /* failed */
+        log_error(LOG_ERR, "attaching tape '%s' failed.", filename_locale);
+    }
+    g_free(filename_locale);
+}
+
+
+/** \brief  Handler for 'selection-changed' event of the preview widget
+ *
+ * Checks if a proper selection was made and activates the 'Autostart' button
+ * if so, disabled it otherwise
+ *
+ * \param[in]   chooser Parent dialog
+ * \param[in]   data    Extra event data (unused)
+ */
+static void on_selection_changed(GtkFileChooser *chooser, gpointer data)
+{
+    gchar *filename;
+
+    filename = gtk_file_chooser_get_filename(chooser);
+    if (filename != NULL) {
+        gtk_widget_set_sensitive(autostart_button, TRUE);
+        g_free(filename);
+    } else {
+        gtk_widget_set_sensitive(autostart_button, FALSE);
+    }
+}
+
 
 
 /** \brief  Handler for 'response' event of the dialog
@@ -111,55 +196,81 @@ static void on_hidden_toggled(GtkWidget *widget, gpointer user_data)
  *
  * \param[in]   widget      the dialog
  * \param[in]   response_id response ID
- * \param[in]   user_data   extra data (unused)
+ * \param[in]   user_data   index in the preview widget
  *
  * TODO:    proper (error) messages, which requires implementing ui_error() and
  *          ui_message() and moving them into gtk3/widgets to avoid circular
  *          references
  */
-static void on_response(GtkWidget *widget, gint response_id,
-                        gpointer user_data)
+static void on_response(GtkWidget *widget, gint response_id, gpointer user_data)
 {
-    gchar *filename;
-    int index;
+    gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
+    int index = content_preview_widget_get_index(preview_widget);
+    int autostart = 0;
 
-    index = GPOINTER_TO_INT(user_data);
+    resources_get_int("AutostartOnDoubleclick", &autostart);
 
-    debug_gtk3("got response ID %d, index %d.", response_id, index);
+    /* first, to make the following logic less funky, map some events to others,
+       depending on whether autostart-on-doubleclick is enabled or not, and 
+       depending on the event coming from the preview window or not. */
+    switch (response_id) {
+        /* double-click on file in the preview widget when autostart-on-doubleclick is NOT enabled */
+        case VICE_RESPONSE_AUTOLOAD_INDEX:
+        /* double-click on file in the preview widget when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_AUTOSTART_INDEX:
+            if ((index < 0) || (filename == NULL)) {
+                response_id = VICE_RESPONSE_INVALID;   /* drop this event */
+            }
+            break;
+        /* 'Open' button clicked when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_CUSTOM_OPEN:
+            if (filename == NULL) {
+                response_id = VICE_RESPONSE_INVALID;   /* drop this event */
+            } else if (index >= 0) {
+                response_id = VICE_RESPONSE_AUTOLOAD_INDEX;
+            }
+            break;
+        /* double-click on file in the main file chooser,
+           'Autostart' button when autostart-on-doubleclick is enabled
+           'Open' button when autostart-on-doubleclick is NOT enabled */
+        case GTK_RESPONSE_ACCEPT:
+            if (filename == NULL) {
+                response_id = VICE_RESPONSE_INVALID;   /* drop this event */
+            } else if ((index >= 0) && (autostart == 0)) {
+                response_id = VICE_RESPONSE_AUTOLOAD_INDEX;
+            } else if ((index >= 0) && (autostart == 1)) {
+                response_id = VICE_RESPONSE_AUTOSTART_INDEX;
+            } else if (autostart == 0) {
+                response_id = VICE_RESPONSE_CUSTOM_OPEN;
+            } else {
+                response_id = VICE_RESPONSE_AUTOSTART;
+            }
+            break;
+        default:
+            break;
+    }
 
     switch (response_id) {
+        /* 'Open' button clicked when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_CUSTOM_OPEN:
+            do_attach(widget, user_data);
 
-        /* 'Open' button, double-click on file */
-        case GTK_RESPONSE_ACCEPT:
-            lastdir_update(widget, &last_dir);
-            filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
-            /* ui_message("Opening file '%s' ...", filename); */
-            debug_gtk3("Attaching file '%s' to tape unit.", filename);
-
-            /* copied from Gtk2: I fail to see how brute-forcing your way
-             * through file types is 'smart', but hell, it works */
-            if (tape_image_attach(1, filename) < 0) {
-                /* failed */
-                debug_gtk3("tape attach failed.");
-            }
-            g_free(filename);
             gtk_widget_destroy(widget);
             break;
 
-        /* 'Autostart' button clicked */
+        /* 'Autostart' button clicked when autostart-on-doubleclick is NOT enabled */
         case VICE_RESPONSE_AUTOSTART:
-            lastdir_update(widget, &last_dir);
-            filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
-            debug_gtk3("Autostarting file '%s'.", filename);
-            if (autostart_tape(
-                        filename,
-                        NULL,   /* program name */
-                        index,
-                        AUTOSTART_MODE_RUN) < 0) {
-                /* oeps */
-                debug_gtk3("autostart tape attach failed.");
-            }
-            g_free(filename);
+        /* double-click on file in the preview widget when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_AUTOSTART_INDEX:
+            do_autostart(widget, index + 1, 1);
+
+            gtk_widget_destroy(widget);
+            break;
+
+        /* double-click on file in the preview widget when autostart-on-doubleclick is NOT enabled */
+        case VICE_RESPONSE_AUTOLOAD_INDEX:
+            do_autostart(widget, index + 1, 0);
+
             gtk_widget_destroy(widget);
             break;
 
@@ -171,11 +282,16 @@ static void on_response(GtkWidget *widget, gint response_id,
             break;
     }
 
-    ui_set_ignore_mouse_hide(FALSE);
+    if (filename != NULL) {
+        g_free(filename);
+    }
 }
 
 
+
 /** \brief  Create the 'extra' widget
+ *
+ * \param[in]   parent  parent widget
  *
  * \return  GtkGrid
  *
@@ -185,10 +301,6 @@ static GtkWidget *create_extra_widget(GtkWidget *parent)
 {
     GtkWidget *grid;
     GtkWidget *hidden_check;
-    GtkWidget *readonly_check;
-#if 0
-    GtkWidget *preview_check;
-#endif
 
     grid = gtk_grid_new();
     gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
@@ -198,13 +310,9 @@ static GtkWidget *create_extra_widget(GtkWidget *parent)
             (gpointer)(parent));
     gtk_grid_attach(GTK_GRID(grid), hidden_check, 0, 0, 1, 1);
 
+#if 0
     readonly_check = gtk_check_button_new_with_label("Attach read-only");
     gtk_grid_attach(GTK_GRID(grid), readonly_check, 1, 0, 1, 1);
-#if 0
-    preview_check = gtk_check_button_new_with_label("Show image contents");
-    g_signal_connect(preview_check, "toggled", G_CALLBACK(on_preview_toggled),
-            NULL);
-    gtk_grid_attach(GTK_GRID(grid), preview_check, 2, 0, 1, 1);
 #endif
 
     gtk_widget_show_all(grid);
@@ -212,6 +320,7 @@ static GtkWidget *create_extra_widget(GtkWidget *parent)
 }
 
 
+#ifndef SANDBOX_MODE
 /** \brief  Create the tape attach dialog
  *
  * \param[in]   parent  parent widget, used to get the top level window
@@ -222,8 +331,9 @@ static GtkWidget *create_tape_attach_dialog(GtkWidget *parent)
 {
     GtkWidget *dialog;
     size_t i;
+    int autostart = 0;
 
-    ui_set_ignore_mouse_hide(TRUE);
+    resources_get_int("AutostartOnDoubleclick", &autostart);
 
     /* create new dialog */
     dialog = gtk_file_chooser_dialog_new(
@@ -231,16 +341,37 @@ static GtkWidget *create_tape_attach_dialog(GtkWidget *parent)
             ui_get_active_window(),
             GTK_FILE_CHOOSER_ACTION_OPEN,
             /* buttons */
-            "Open", GTK_RESPONSE_ACCEPT,
-            "Autostart", VICE_RESPONSE_AUTOSTART,
-            "Close", GTK_RESPONSE_REJECT,
             NULL, NULL);
+
+    /* We need to manually add the buttons here, not using the constructor
+     * above, to keep the order of the buttons the same as in the other
+     * 'attach' dialogs. Gtk doesn't allow getting references to buttons when
+     * added via the constructor, meaning we cannot get a reference to the
+     * "Autostart" button in order to "grey it out".
+     */
+    /* to handle the "double click means autostart" option, we need to always
+       connect a button to GTK_RESPONSE_ACCEPT, else double clicks will stop
+       working */
+    if (autostart) {
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "Attach / Load", VICE_RESPONSE_CUSTOM_OPEN);
+        autostart_button = gtk_dialog_add_button(GTK_DIALOG(dialog),
+                                                "Autostart",
+                                                GTK_RESPONSE_ACCEPT);
+    } else {
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "Attach / Load", GTK_RESPONSE_ACCEPT);
+        autostart_button = gtk_dialog_add_button(GTK_DIALOG(dialog),
+                                                "Autostart",
+                                                VICE_RESPONSE_AUTOSTART);
+    }
+
+    gtk_widget_set_sensitive(autostart_button, FALSE);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Close", GTK_RESPONSE_REJECT);
 
     /* set modal so mouse-grab doesn't get triggered */
     gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
 
     /* set last directory */
-    lastdir_set(dialog, &last_dir);
+    lastdir_set(dialog, &last_dir, &last_file);
 
     /* add 'extra' widget: 'readonly' and 'show preview' checkboxes */
     gtk_file_chooser_set_extra_widget(GTK_FILE_CHOOSER(dialog),
@@ -262,10 +393,60 @@ static GtkWidget *create_tape_attach_dialog(GtkWidget *parent)
     g_signal_connect(dialog, "response", G_CALLBACK(on_response), NULL);
     g_signal_connect(dialog, "update-preview", G_CALLBACK(on_update_preview),
             NULL);
+    g_signal_connect_unlocked(dialog, "selection-changed",
+            G_CALLBACK(on_selection_changed), NULL);
 
     return dialog;
 
 }
+
+#else
+
+/** \brief  Create the tape attach dialog (sandbox version)
+ *
+ * \param[in]   parent  parent widget, used to get the top level window
+ *
+ * \return  GtkFileChooserNative
+ */
+static GtkFileChooserNative *create_tape_attach_dialog_native(GtkWidget *parent)
+{
+    GtkFileChooserNative *dialog;
+
+    /* create new dialog */
+    dialog = gtk_file_chooser_native_new(
+            "Attach a tape image",
+            ui_get_active_window(),
+            GTK_FILE_CHOOSER_ACTION_OPEN,
+            /* buttons */
+            NULL, NULL);
+#if 0
+    /* set modal so mouse-grab doesn't get triggered */
+    gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
+    /* set last directory */
+    lastdir_set(dialog, &last_dir);
+
+    /* add 'extra' widget: 'readonly' and 'show preview' checkboxes */
+    gtk_file_chooser_set_extra_widget(GTK_FILE_CHOOSER(dialog),
+                                      create_extra_widget(dialog));
+
+    preview_widget = content_preview_widget_create(dialog, tapecontents_read,
+            on_response);
+    gtk_file_chooser_set_preview_widget(GTK_FILE_CHOOSER(dialog),
+            preview_widget);
+
+    /* add filters */
+    for (i = 0; filters[i].name != NULL; i++) {
+        gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog),
+                create_file_chooser_filter(filters[i], FALSE));
+    }
+#endif
+    /* connect "reponse" handler: the `user_data` argument gets filled in when
+     * the "response" signal is emitted: a response ID */
+    g_signal_connect(dialog, "response", G_CALLBACK(on_response_native), NULL);
+
+    return dialog;
+}
+#endif
 
 
 /** \brief  Callback for the "attach tape image" menu items
@@ -274,15 +455,21 @@ static GtkWidget *create_tape_attach_dialog(GtkWidget *parent)
  *
  * \param[in]   widget      menu item triggering the callback
  * \param[in]   user_data   ignored
+ *
+ * \return  TRUE (signal to Gtk the event was 'consumed')
  */
-void ui_tape_attach_callback(GtkWidget *widget, gpointer user_data)
+gboolean ui_tape_attach_callback(GtkWidget *widget, gpointer user_data)
 {
+#ifndef SANDBOX_MODE
     GtkWidget *dialog;
-
-    debug_gtk3("called.");
     dialog = create_tape_attach_dialog(widget);
     gtk_widget_show(dialog);
-
+#else
+    GtkFileChooserNative *dialog;
+    dialog = create_tape_attach_dialog_native(widget);
+    gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog));
+#endif
+    return TRUE;
 }
 
 
@@ -293,10 +480,13 @@ void ui_tape_attach_callback(GtkWidget *widget, gpointer user_data)
  *
  * \param[in]   widget      menu item triggering the callback
  * \param[in]   user_data   ignored
+ *
+ * \return  TRUE
  */
-void ui_tape_detach_callback(GtkWidget *widget, gpointer user_data)
+gboolean ui_tape_detach_callback(GtkWidget *widget, gpointer user_data)
 {
     tape_image_detach(1);
+    return TRUE;
 }
 
 
@@ -304,5 +494,5 @@ void ui_tape_detach_callback(GtkWidget *widget, gpointer user_data)
  */
 void ui_tape_attach_shutdown(void)
 {
-    lastdir_shutdown(&last_dir);
+    lastdir_shutdown(&last_dir, &last_file);
 }

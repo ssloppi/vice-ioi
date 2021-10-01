@@ -5,6 +5,20 @@
  */
 
 /*
+ * Icons used by this file:
+ *
+ * $VICEICON    actions/media-skip-backward
+ * $VICEICON    actions/media-playback-start
+ * $VICEICON    actions/media-playback-pause
+ * $VICEICON    actions/media-playback-stop
+ * $VICEICON    actions/media-seek-forward
+ * $VICEICON    actions/media-skip-forward
+ * $VICEICON    actions/media-eject
+ * $VICEICON    actions/media-record
+ *
+ */
+
+/*
  * This file is part of VICE, the Versatile Commodore Emulator.
  * See README for copyright notice.
  *
@@ -30,6 +44,7 @@
 
 #include <gtk/gtk.h>
 
+#include "archdep_defs.h"
 #include "vice_gtk3.h"
 #include "debug_gtk3.h"
 #include "debug.h"
@@ -51,8 +66,6 @@
 
 
 
-
-
 /** \brief  Object containing icon and callback
  */
 typedef struct vsid_ctrl_button_s {
@@ -71,9 +84,10 @@ static int tune_current;
 /** \brief  Default subtune number */
 static int tune_default;
 
-
+/** \brief  Progress bar */
 static GtkWidget *progress = NULL;
 
+/** \brief  Repeat toggle button */
 static GtkWidget *repeat = NULL;
 
 
@@ -84,7 +98,7 @@ static GtkWidget *repeat = NULL;
  */
 static void fake_callback(GtkWidget *widget, gpointer data)
 {
-    debug_gtk3("got callback for '%s'.", (const char *)data);
+    debug_gtk3("Unsupported callback for '%s'.", (const char *)data);
 }
 
 
@@ -158,18 +172,14 @@ static void ffwd_callback(GtkWidget *widget, gpointer data)
  *
  * Continue playback by using the emulator's pause feature.
  *
- * \note    ui_pause_emulation() appears to toggle pause mode when passed 1 and
- *          disable pause mode when passed 0.
- *
  * \param[in]   widget  widget
  * \param[in]   data    icon name
  */
 static void play_callback(GtkWidget *widget, gpointer data)
 {
-    ui_pause_emulation(0);
+    ui_pause_disable();
 
     if (tune_current <= 0) {
-        debug_gtk3("restarting with tune #%d.", tune_default);
         tune_current = tune_default;
         vsid_tune_info_widget_set_time(0);
         machine_trigger_reset(MACHINE_RESET_MODE_HARD);
@@ -187,36 +197,24 @@ static void play_callback(GtkWidget *widget, gpointer data)
  *
  * Pause playback by using the emulator's pause feature.
  *
- * \note    ui_pause_emulation() appears to toggle pause mode when passed 1 and
- *          disable pause mode when passed 0.
- *
  * \param[in]   widget  widget
  * \param[in]   data    icon name
  */
 static void pause_callback(GtkWidget *widget, gpointer data)
 {
-    ui_pause_emulation(1);
+    ui_pause_toggle();
 }
 
-/* XXX: this doesn't work and even segfaults when pushing play after a tune
- *      has played for some time.
+
+/** \brief  Wrapper for the attach callback
+ *
+ * \param[in,out]   widget  control button
+ * \param[in]       data    icon name
  */
-#if 0
-static void stop_callback(GtkWidget *widget, gpointer data)
+static void sid_attach_wrapper(GtkWidget *widget, gpointer data)
 {
-    debug_gtk3("called.");
-
-#if 0
-    machine_trigger_reset(MACHINE_RESET_MODE_SOFT);
-#endif
-    machine_reset();
-#if 0
-    psid_init_driver();
-    psid_init_tune(1);
-#endif
-    tune_current = -1;
+    uisidattach_show_dialog(widget, data);
 }
-#endif
 
 
 /** \brief  List of media control buttons
@@ -230,13 +228,13 @@ static const vsid_ctrl_button_t buttons[] = {
         "Pause playback" },
 #if 0
     { "media-playback-stop", stop_callback,
-        "Stop playback (slightly fucked at the moment, so it doesn't work)"},
+        "Stop playback (slightly screwed up at the moment, so it doesn't work)"},
 #endif
     { "media-seek-forward", ffwd_callback,
         "Fast forward" },
     { "media-skip-forward", next_tune_callback,
         "Go to next subtune" },   /* select next tune */
-    { "media-eject", uisidattach_show_dialog,
+    { "media-eject", sid_attach_wrapper,
         "Load PSID file" },   /* active file-open dialog */
     { "media-record", fake_callback,
         "Record media" },  /* start recording with current settings*/
@@ -258,8 +256,11 @@ GtkWidget *vsid_control_widget_create(void)
 
     for (i = 0; buttons[i].icon_name != NULL; i++) {
         GtkWidget *button;
+        gchar buf[1024];
 
-        button = gtk_button_new_from_icon_name(buttons[i].icon_name,
+        g_snprintf(buf, sizeof(buf), "%s-symbolic", buttons[i].icon_name);
+
+        button = gtk_button_new_from_icon_name(buf,
                 GTK_ICON_SIZE_LARGE_TOOLBAR);
         /* always show the image, the button would useless without an image */
         gtk_button_set_always_show_image(GTK_BUTTON(button), TRUE);

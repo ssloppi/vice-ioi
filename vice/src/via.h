@@ -76,7 +76,6 @@
 
 
 struct alarm_context_s;
-struct clk_guard_s;
 struct interrupt_cpu_status_s;
 struct snapshot_s;
 struct via_context_s;
@@ -127,8 +126,8 @@ typedef struct via_context_s {
 
     int enabled;
 
-    void *prv;
-    void *context;
+    void *prv;                /* typically drivevia1_context_t */
+    void *context;            /* typically diskunit_context_t */
 
     void (*undump_pra)(struct via_context_s *, uint8_t);
     void (*undump_prb)(struct via_context_s *, uint8_t);
@@ -147,14 +146,21 @@ typedef struct via_context_s {
     void (*set_ca2)(struct via_context_s *, int state);
     void (*set_cb2)(struct via_context_s *, int state);
     void (*reset)(struct via_context_s *);
+
+    /* HACK:  flag to indicate that the computer transferred data to the shift
+              register ("burstmode").
+       FIXME: this should be fixed properly and then removed
+
+       see bug #996, bug #1233
+    */
+    int burstmodehack;
 } via_context_t;
 
 
 extern void viacore_setup_context(struct via_context_s *via_context);
 extern void viacore_init(struct via_context_s *via_context,
                          struct alarm_context_s *alarm_context,
-                         struct interrupt_cpu_status_s *int_status,
-                         struct clk_guard_s *clk_guard);
+                         struct interrupt_cpu_status_s *int_status);
 extern void viacore_shutdown(struct via_context_s *via_context);
 extern void viacore_reset(struct via_context_s *via_context);
 extern void viacore_disable(struct via_context_s *via_context);

@@ -9,10 +9,6 @@
  *  - Windows
  *  - MacOS
  *  - BeOS/Haiku
- *  - AmigaOS (untested)
- *  - OS/2 (untested)
- *  - MS-DOS (untested)
- *
  */
 
 /*
@@ -46,10 +42,6 @@
 #include "lib.h"
 #include "log.h"
 
-#ifdef AMIGA_SUPPORT
-/* some includes */
-#endif
-
 /* for readlink(2) */
 #ifdef UNIX_COMPILE
 # include <unistd.h>
@@ -64,7 +56,7 @@
 # include "windows.h"
 #endif
 
-#include "archdep_atexit.h"
+#include "archdep_exit.h"
 #include "archdep_program_path.h"
 
 #include "archdep_program_name.h"
@@ -72,21 +64,22 @@
 
 /** \brief  Program name
  *
- * Heap allocated on the first call, must be free when exiting the program
- * with lib_free().
+ * Heap allocated on the first call to #archdep_program_name(), must be freed
+ * with #archdep_program_name_free() on emulator shutdown.
  */
 static char *program_name = NULL;
 
 
-#if defined(WIN32_COMPILE) || defined(OS2_COMPILE) || \
-    defined(MSDOS) || defined(_MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-/** \brief  Helper function for Windows and OS/2
+#ifdef ARCHDEP_OS_WINDOWS
+/** \brief  Helper function for Windows
  *
  * \param[in]   buf string to parse binary name from
  *
- * \return  heap-allocated binary name, free with lib_free()
+ * \return  binary name
+ *
+ * \note    free after use with lib_free().
  */
-static char *prg_name_win32_os2(const char *buf)
+static char *prg_name_win32(const char *buf)
 {
     const char *s;
     const char *e;
@@ -113,12 +106,14 @@ static char *prg_name_win32_os2(const char *buf)
 #endif
 
 
-#if defined(UNIX_COMPILE) || defined(BEOS_COMPILE)
+#if defined(ARCHDEP_OS_UNIX) || defined(ARCHDEP_OS_BEOS)
 /** \brief  Helper function for Unix-ish systems
  *
  * \param[in]   buf string to parse binary name from
  *
- * \return  heap-allocated binary name, free with lib_free()
+ * \return  binary name
+ *
+ * \note    free after use with lib_free().
  */
 static char *prg_name_unix(const char *buf)
 {
@@ -127,9 +122,9 @@ static char *prg_name_unix(const char *buf)
 
     p = strrchr(buf, '/');
     if (p == NULL) {
-        tmp = lib_stralloc(buf);
+        tmp = lib_strdup(buf);
     } else {
-        tmp = lib_stralloc(p + 1);
+        tmp = lib_strdup(p + 1);
     }
     return tmp;
 }
@@ -137,10 +132,11 @@ static char *prg_name_unix(const char *buf)
 
 /** \brief  Get name of the currently running binary
  *
- * Allocates the name on the first call, this must be free with lib_free()
- * when exiting the program.
+ * Get the name of the running binary, striped from path and extension.
  *
  * \return  program name
+ *
+ * \note    Use #archdep_program_name_free on emulator shutdown to free memory.
  */
 const char *archdep_program_name(void)
 {
@@ -151,56 +147,24 @@ const char *archdep_program_name(void)
         return program_name;
     }
 
-
     execpath = archdep_program_path();
-    if (execpath == NULL) {
-        log_error(LOG_ERR, "bollocks");
-        archdep_vice_exit(1);
-    }
 
-#ifdef AMIGA_SUPPORT
-    char *p;
-
-    p = FilePart(execpath);
-    if (p != NULL) {
-        program_name = lib_stralloc(p);
-    } else {
-        log_error(LOG_ERR, "failed to retrieve program name.");
-        archdep_vice_exit(1);
-    }
-#endif
-
-#ifdef UNIX_COMPILE
-    /* XXX: Only works on Linux, support for *BSD, Solaris and MacOS to be
-     *      added later:
-     *
-     *      MacOS:      _NSGetExecutablePath()
-     *      Solaris:    getexecname()
-     *      FreeBSD:    sysctl CTL_KERN_PROC KERN_PROC_PATHNAME - 1 (???)
-     *      NetBSD:     readlink /proc/curproc/exe
-     *      DFlyBSD:    readlink /proc/curproc/file
-     *      OpenBSD:    ???
-     */
-
+#if defined(ARCHDEP_OS_UNIX) || defined(ARCHDEP_OS_BEOS)
     program_name = prg_name_unix(execpath);
 #endif
 
-#if defined(WIN32_COMPILE) || defined(OS2_COMPILE) || \
-    defined(MSDOS) || defined(_MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-    program_name = prg_name_win32_os2(execpath);
+#ifdef ARCHDEP_OS_WINDOWS
+    program_name = prg_name_win32(execpath);
 #endif
 
-#ifdef BEOS_COMPILE
-    program_name = prg_name_unix(execpath);
-#endif
-#if 0
-    printf("%s: got program name '%s'\n", __func__, program_name);
-#endif
+    /* returns NULL on systems other than Windows/Unix */
     return program_name;
 }
 
 
 /** \brief  Free program name
+ *
+ * This function must be called on emulator shutdown to free the program name.
  */
 void archdep_program_name_free(void)
 {

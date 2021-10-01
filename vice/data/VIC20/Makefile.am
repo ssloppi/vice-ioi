@@ -1,8 +1,9 @@
-vic20dir = $(VICEDIR)/VIC20
+vic20dir = $(VICE_DATADIR)/VIC20
 
 roms = \
 	basic \
 	chargen \
+	chargen-jp \
 	kernal
 
 romsets = \
@@ -15,12 +16,19 @@ palettes = \
 	colodore_vic.vpl
 
 gtk3_keymaps = \
+	gtk3_pos_it.vkm \
+	gtk3_sym_it.vkm \
+	gtk3_pos_de.vkm \
+	gtk3_sym_de.vkm \
+	gtk3_sym_fr.vkm \
 	gtk3_pos.vkm \
 	gtk3_sym.vkm
 
 sdl_keymaps = \
 	sdl_hotkeys.vkm \
+	sdl_sym_de.vkm \
 	sdl_pos.vkm \
+	sdl_pos_fr.vkm \
 	sdl_pos_fi.vkm
 
 if SDL_COMPILE

@@ -39,14 +39,14 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "debug_gtk3.h"
-#include "lib.h"
-#include "resources.h"
-#include "machine.h"
-#include "widgethelpers.h"
 #include "basewidgets.h"
-#include "ui.h"
+#include "debug_gtk3.h"
 #include "gfxoutput.h"
+#include "lib.h"
+#include "machine.h"
+#include "resources.h"
+#include "ui.h"
+#include "widgethelpers.h"
 
 #include "ffmpegwidget.h"
 
@@ -59,11 +59,15 @@
 static gfxoutputdrv_t *driver_info = NULL;
 
 /* references to combo boxes, used in various event handlers */
+
+/** \brief  File format combo box reference */
 static GtkWidget *format_widget = NULL;
+/** \brief  Video codec combo box reference */
 static GtkWidget *video_widget = NULL;
+/** \brief  Audio codec combo box reference */
 static GtkWidget *audio_widget = NULL;
 
-
+/* forward declarations of functions */
 static GtkListStore *create_video_model(int fmt);
 static GtkListStore *create_audio_model(int fmt);
 static void update_video_combo_box(int id);
@@ -96,11 +100,9 @@ static void on_format_changed(GtkWidget *widget, gpointer data)
         gtk_tree_model_get(model, &iter, 0, &fmt_name, -1);
     }
 
-    debug_gtk3("called, index %d: '%s'.", fmt_id, fmt_name);
     if (fmt_name != NULL && *fmt_name != '\0') {
         resources_set_string("FFMPEGFormat", fmt_name);
     }
-
 
     video = create_video_model(fmt_id);
     gtk_combo_box_set_active(GTK_COMBO_BOX(video_widget), 0);
@@ -141,7 +143,6 @@ static void on_video_codec_changed(GtkComboBox *combo, gpointer data)
         int codec;
 
         gtk_tree_model_get(model, &iter, 1, &codec, -1);
-        debug_gtk3("setting FFMPEGVideoCodec to %d.", codec);
         resources_set_int("FFMPEGVideoCodec", codec);
     }
 }
@@ -166,7 +167,6 @@ static void on_audio_codec_changed(GtkComboBox *combo, gpointer data)
         int codec;
 
         gtk_tree_model_get(model, &iter, 1, &codec, -1);
-        debug_gtk3("setting FFMPEGAudioCodec to %d.", codec);
         resources_set_int("FFMPEGAudioCodec", codec);
     }
 }
@@ -186,9 +186,11 @@ static int get_format_index_by_name(const char *fmt)
 {
     int i;
 
-    for (i = 0; driver_info->formatlist[i].name != NULL; i++) {
-        if (strcmp(driver_info->formatlist[i].name, fmt) == 0) {
-            return i;
+    if (driver_info != NULL) {
+        for (i = 0; driver_info->formatlist[i].name != NULL; i++) {
+            if (strcmp(driver_info->formatlist[i].name, fmt) == 0) {
+                return i;
+            }
         }
     }
     return -1;
@@ -207,12 +209,13 @@ static GtkListStore *create_format_model(void)
 
     model = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
 
-    for (i = 0; driver_info->formatlist[i].name != NULL; i++) {
-        const char *name = driver_info->formatlist[i].name;
+    if (driver_info != NULL) {
+        for (i = 0; driver_info->formatlist[i].name != NULL; i++) {
+            const char *name = driver_info->formatlist[i].name;
 
-        /*debug_gtk3("adding FFMPEG format '%s'.", name);*/
-        gtk_list_store_append(model, &iter);
-        gtk_list_store_set(model, &iter, 0, name, 1, i, -1);
+            gtk_list_store_append(model, &iter);
+            gtk_list_store_set(model, &iter, 0, name, 1, i, -1);
+        }
     }
 
     return model;
@@ -220,6 +223,8 @@ static GtkListStore *create_format_model(void)
 
 
 /** \brief  Create a model for the video codecs of \a fmt
+ *
+ * \param[in]   fmt format index
  *
  * \return  GtkListStore
  */
@@ -230,10 +235,14 @@ static GtkListStore *create_video_model(int fmt)
     gfxoutputdrv_codec_t *codec_list;
     int i;
 
+    store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
+
+    if (driver_info == NULL) {
+        return store;
+    }
 
     codec_list = driver_info->formatlist[fmt].video_codecs;
 
-    store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
     if (codec_list == NULL) {
         return store;
     }
@@ -242,7 +251,6 @@ static GtkListStore *create_video_model(int fmt)
         const char *name = codec_list[i].name;
         int id = codec_list[i].id;
 
-        debug_gtk3("adding FFMPEG video codec '%s' (%d).", name, id);
         gtk_list_store_append(store, &iter);
         gtk_list_store_set(store, &iter, 0, name, 1, id, -1);
     }
@@ -253,6 +261,8 @@ static GtkListStore *create_video_model(int fmt)
 
 /** \brief  Create a GtkListStore for the audio codecs of \a fmt
  *
+ * \param[in]   fmt format index
+ *
  * \return  GtkListStore
  */
 static GtkListStore *create_audio_model(int fmt)
@@ -262,10 +272,13 @@ static GtkListStore *create_audio_model(int fmt)
     gfxoutputdrv_codec_t *codec_list;
     int i;
 
+    store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
+
+    if (driver_info == NULL) {
+        return store;
+    }
 
     codec_list = driver_info->formatlist[fmt].audio_codecs;
-
-    store = gtk_list_store_new(2, G_TYPE_STRING, G_TYPE_INT);
 
     if (codec_list == NULL) {
         return store;
@@ -275,7 +288,6 @@ static GtkListStore *create_audio_model(int fmt)
         const char *name = codec_list[i].name;
         int id = codec_list[i].id;
 
-        /*debug_gtk3("adding FFMPEG audio codec '%s' (%d).", name, id);*/
         gtk_list_store_append(store, &iter);
         gtk_list_store_set(store, &iter, 0, name, 1, id, -1);
     }
@@ -327,7 +339,7 @@ static GtkWidget *create_format_combo_box(void)
  *
  * \param[in]   fmt FFMPEG driver format name
  */
-static void update_format_combo_box(const char * fmt)
+static void update_format_combo_box(const char *fmt)
 {
     GtkTreeModel *model;
     GtkTreeIter iter;
@@ -419,8 +431,9 @@ static void update_audio_combo_box(int id)
 
 /** \brief  Create combo box with supported video codecs for \a fmt
  *
+ * \param[in]   fmt format index
+ *
  * \return  GtkComboBox
- * ne
  */
 static GtkWidget *create_video_combo_box(int fmt)
 {
@@ -444,6 +457,8 @@ static GtkWidget *create_video_combo_box(int fmt)
 
 
 /** \brief  Create combo box with supported audio codecs for \a fmt
+ *
+ * \param[in]   fmt format index
  *
  * \return  GtkComboBox
  */
@@ -497,9 +512,7 @@ GtkWidget *ffmpeg_widget_create(void)
     /* get index in table of format */
     fmt_index = get_format_index_by_name(current_format);
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 16);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT);
 
     /* format selection */
     label = create_indented_label("format");

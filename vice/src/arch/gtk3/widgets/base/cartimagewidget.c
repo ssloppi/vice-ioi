@@ -28,25 +28,64 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
-#include "machine.h"
-#include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
 #include "basedialogs.h"
-#include "openfiledialog.h"
-#include "savefiledialog.h"
+#include "basewidgets.h"
 #include "cartridge.h"
+#include "debug_gtk3.h"
+#include "machine.h"
+#include "openfiledialog.h"
+#include "resources.h"
+#include "savefiledialog.h"
+#include "ui.h"
+#include "widgethelpers.h"
 
 #include "cartimagewidget.h"
 
 
+/** \brief  Cartridge save function pointer */
 static int (*save_func)(int, const char *) = NULL;
+
+/** \brief  Cartridge flush function pointer */
 static int (*flush_func)(int) = NULL;
-static const char *crt_name;   /**< cartridge name used in messages */
+
+/** \brief  Cartridge name
+ *
+ * Used in messages.
+ */
+static const char *crt_name;
+
+/** \brief  Cartridge ID
+ *
+ * Used for various cartridge functions
+ */
 static int crt_id;  /**< cartridge ID in cartridge_*() calls */
+
+/** \brief  Name of resource containing the cartridge filename */
 static const char *res_fname;
+
+/** \brief  Name of resource containing the flush-on-write setting */
 static const char *res_write;
+
+/** \brief  Reference to the filename entry widget */
+static GtkWidget *filename_entry;
+
+
+/** \brief  Callback for the open/create-file dialog
+ *
+ * \param[in,out]   dialog      open/create dialog
+ * \param[in,out]   filename    filename
+ * \param[in]       data        extra data (unused)
+ */
+static void browse_filename_callback(GtkDialog *dialog,
+                                     gchar *filename,
+                                     gpointer data)
+{
+    if (filename != NULL) {
+        vice_gtk3_resource_entry_full_set(filename_entry, filename);
+        g_free(filename);
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
 
 
 /** \brief  Handler for the "clicked" event of the "browse" button
@@ -58,34 +97,60 @@ static const char *res_write;
  */
 static void on_browse_clicked(GtkWidget *button, gpointer user_data)
 {
-    gchar *filename;
-    char buffer[256];
+    char title[256];
 
-    g_snprintf(buffer, 256, "Open or create %s image file", crt_name);
+    g_snprintf(title, sizeof(title), "Open or create %s image file", crt_name);
 
-    filename = vice_gtk3_open_create_file_dialog(buffer, NULL, FALSE, NULL);
-    if (filename != NULL) {
-        GtkWidget *grid = gtk_widget_get_parent(button);
-        GtkWidget *entry = gtk_grid_get_child_at(GTK_GRID(grid), 1, 1);
-
-        vice_gtk3_resource_entry_full_set(entry, filename);
-        g_free(filename);
-    }
+    vice_gtk3_open_create_file_dialog(
+            title,NULL, FALSE, NULL,
+            browse_filename_callback,
+            NULL);
 }
 
 
-/** \brief  Handler for the "clicked" event of the "save" button
+/** \brief  Callback for the save-dialog
  *
- * Save cart image file. Uses dirname()/basename() on the GEORAMfilename
- * resource to act as a "Save" button, but also allows changing filename/dir
- * to act as a "Save As" button.
+ * \param[in,out]   dialog      save-file dialog
+ * \param[in,out]   filename    path to file to save
+ * \param[in]       data        extra data (unused)
+ */
+static void save_filename_callback(GtkDialog *dialog,
+                                   gchar *filename,
+                                   gpointer data)
+{
+    debug_gtk3("Called with '%s'\n", filename);
+
+    if (filename != NULL) {
+#if 0
+        debug_gtk3("writing %s file image as '%s'.", crt_name, new_filename);
+#endif
+        /* write file */
+        if (save_func != NULL) {
+            if (save_func(crt_id, filename) < 0) {
+                /* oops */
+                vice_gtk3_message_error("I/O error",
+                        "Failed to save '%s'", filename);
+            }
+        } else {
+            vice_gtk3_message_error("Core error",
+                    "%s save handler not specified", crt_name);
+        }
+        g_free(filename);
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
+}
+
+
+/** \brief  Handler for the 'clicked' event of the "save" button
+ *
+ * Opens a file chooser to save the cartridge.
  *
  * \param[in]   button      save button
- * \param[in]   user_data   unused
+ * \param[in]   user_data   extra event data (unused)
  */
 static void on_save_clicked(GtkWidget *button, gpointer user_data)
 {
-    gchar *new_filename;
+    GtkWidget *dialog;
     gchar *fname = NULL;
     gchar *dname = NULL;
     char buffer[256];
@@ -101,30 +166,16 @@ static void on_save_clicked(GtkWidget *button, gpointer user_data)
     }
 #endif
 
-    g_snprintf(buffer, 256, "Save %s image file", crt_name);
-    new_filename = vice_gtk3_save_file_dialog(buffer, fname, TRUE, dname);
-    if (new_filename != NULL) {
-        debug_gtk3("writing %s file image as '%s'.", crt_name, new_filename);
-        /* write file */
-        if (save_func != NULL) {
-            if (save_func(crt_id, new_filename) < 0) {
-                /* oops */
-                vice_gtk3_message_error("I/O error",
-                        "Failed to save '%s'", new_filename);
-            }
-        } else {
-            vice_gtk3_message_error("Core error",
-                    "%s save handler not specified", crt_name);
-        }
-        g_free(new_filename);
-    }
+    g_snprintf(buffer, sizeof(buffer), "Save %s image file", crt_name);
 
-    if (fname != NULL) {
-        g_free(fname);
-    }
-    if (dname != NULL) {
-        g_free(dname);
-    }
+    dialog = vice_gtk3_save_file_dialog(
+            buffer,
+            fname,
+            TRUE,
+            dname,
+            save_filename_callback,
+            NULL);
+    gtk_widget_show(dialog);
 }
 
 
@@ -148,12 +199,14 @@ static void on_flush_clicked(GtkWidget *widget, gpointer user_data)
 
 /** \brief  Create widget to load/save/flush cart image file
  *
- * \param[in]   parent          parent widget (used for dialogs)
+ * \param[in]   parent          parent widget (unused)
  * \param[in]   title           widget title
- * \param[in[   resource_fname  resource for the image file name
- * \param[in]   resource_fwrite resource controlling flush-on-exit/detach
+ * \param[in]   resource_fname  resource for the image file name
+ * \param[in]   resource_write  resource controlling flush-on-exit/detach
  * \param[in]   func_save       function to save the image via dialog
  * \param[in]   func_flush      function to flush current image to host
+ * \param[in]   func_can_save   function to check if the cart can be saved
+ * \param[in]   func_can_flush  function to check if the cart cam be flushed
  * \param[in]   cart_name       cartridge name to use in dialogs
  * \param[in]   cart_id         cartridge ID to use in save/flush callbacks
  *
@@ -166,11 +219,12 @@ GtkWidget *cart_image_widget_create(
         const char *resource_fname, const char *resource_write,
         int (*func_save)(int, const char *),
         int (*func_flush)(int),
+        int (*func_can_save)(int),
+        int (*func_can_flush)(int),
         const char *cart_name, int cart_id)
 {
     GtkWidget *grid;
     GtkWidget *label;
-    GtkWidget *entry;
     GtkWidget *browse;
     GtkWidget *auto_save;
     GtkWidget *save_button;
@@ -183,18 +237,18 @@ GtkWidget *cart_image_widget_create(
     crt_name = cart_name;
     crt_id = cart_id;
 
-    grid = uihelpers_create_grid_with_label(title, 3);
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, title, 3);
+    g_object_set(grid, "margin-top", 8, NULL);
     label = gtk_label_new("file name");
     gtk_widget_set_halign(label, GTK_ALIGN_START);
     g_object_set(label, "margin-left", 16, NULL);
-    entry = vice_gtk3_resource_entry_full_new(resource_fname);
-    gtk_widget_set_hexpand(entry, TRUE);
+    filename_entry = vice_gtk3_resource_entry_full_new(resource_fname);
+    gtk_widget_set_hexpand(filename_entry, TRUE);
     /* gtk_widget_set_sensitive(entry, FALSE); */
     browse = gtk_button_new_with_label("Browse ...");
 
     gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), filename_entry, 1, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), browse, 2, 1, 1, 1);
 
     auto_save = vice_gtk3_resource_check_button_new(resource_write,
@@ -202,13 +256,13 @@ GtkWidget *cart_image_widget_create(
     g_object_set(auto_save, "margin-left", 16, NULL);
     gtk_grid_attach(GTK_GRID(grid), auto_save, 0, 2, 2, 1);
 
-
-
     save_button = gtk_button_new_with_label("Save as ...");
     gtk_grid_attach(GTK_GRID(grid), save_button, 2, 2, 1, 1);
 
-    flush_button = gtk_button_new_with_label("Flush image");
+    flush_button = gtk_button_new_with_label("Save image");
     gtk_grid_attach(GTK_GRID(grid), flush_button, 2, 3, 1, 1);
+    gtk_widget_set_sensitive(flush_button, (gboolean)(func_can_flush(cart_id)));
+    gtk_widget_set_sensitive(save_button, (gboolean)(func_can_save(cart_id)));
 
     g_signal_connect(browse, "clicked", G_CALLBACK(on_browse_clicked), NULL);
     g_signal_connect(save_button, "clicked", G_CALLBACK(on_save_clicked), NULL);

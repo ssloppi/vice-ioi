@@ -1,7 +1,5 @@
-/** \file   jam_dialog.c
+/** \file   jamdialog.c
  * \brief   Gtk3 CPU jam dialog
- *
- * GTK3 CPU Jam dialog
  *
  * \author  Bas Wassink <b.wassink@ziggo.nl>
  */
@@ -28,10 +26,13 @@
 
 
 #include "vice.h"
+
 #include <gtk/gtk.h>
 
+#include "archdep.h"
 #include "debug_gtk3.h"
 #include "uiapi.h"
+#include "uidata.h"
 
 #include "jamdialog.h"
 
@@ -46,6 +47,7 @@ enum {
     RESPONSE_RESET_SOFT,    /**< trigger soft reset */
     RESPONSE_RESET_HARD,    /**< trigger hard reset */
     RESPONSE_MONITOR,       /**< open monitor */
+    RESPONSE_QUIT           /**< quit emulator */
 };
 
 
@@ -63,17 +65,17 @@ ui_jam_action_t jam_dialog(GtkWidget *parent, const char *msg)
     GtkWidget *label;
     ui_jam_action_t result = UI_JAM_NONE;
 
-
     /*
      * No point in making this asynchronous I think, the emulation is paused
      * anyway due to the CPU jam.
      */
     dialog = gtk_dialog_new_with_buttons("D'OH!", GTK_WINDOW(parent),
             GTK_DIALOG_MODAL,
-            "None", RESPONSE_NONE,
+            "Continue", RESPONSE_NONE,
             "Soft reset", RESPONSE_RESET_SOFT,
             "Hard reset", RESPONSE_RESET_HARD,
-            "Activate monitor", RESPONSE_MONITOR,
+            "Monitor", RESPONSE_MONITOR,
+            "Quit", RESPONSE_QUIT,
             NULL);
 
     /*
@@ -88,7 +90,7 @@ ui_jam_action_t jam_dialog(GtkWidget *parent, const char *msg)
     gtk_widget_show_all(content);
 
     switch (gtk_dialog_run(GTK_DIALOG(dialog))) {
-        case RESPONSE_NONE:
+        case RESPONSE_NONE:             /* fall through */
         case GTK_RESPONSE_DELETE_EVENT:
             result = UI_JAM_NONE;
             break;
@@ -100,6 +102,10 @@ ui_jam_action_t jam_dialog(GtkWidget *parent, const char *msg)
             break;
         case RESPONSE_MONITOR:
             result = UI_JAM_MONITOR;
+            break;
+        case RESPONSE_QUIT:
+            gtk_widget_destroy(dialog);
+            archdep_vice_exit(0);
             break;
         default:
             /* shouldn't get here */

@@ -24,12 +24,21 @@
  *  02111-1307  USA.
  */
 
+/*
+ * $VICERES AttachDevice8Readonly   -vsid
+ * $VICERES AttachDevice9Readonly   -vsid
+ * $VICERES AttachDevice10Readonly  -vsid
+ * $VICERES AttachDevice11Readonly  -vsid
+ */
+
 #include "vice.h"
 
 #include <gtk/gtk.h>
 
 #include "attach.h"
 #include "autostart.h"
+#include "drive.h"
+#include "log.h"
 #include "tape.h"
 #include "debug_gtk3.h"
 #include "basedialogs.h"
@@ -38,26 +47,36 @@
 #include "diskcontents.h"
 #include "filechooserhelpers.h"
 #include "driveunitwidget.h"
+#include "drivenowidget.h"
+#include "mainlock.h"
+#include "resources.h"
 #include "ui.h"
+#include "uistatusbar.h"
 #include "uimachinewindow.h"
 #include "lastdir.h"
 
 #include "uidiskattach.h"
 
-
 /** \brief  File type filters for the dialog
  */
 static ui_file_filter_t filters[] = {
-    { "Disk images", file_chooser_pattern_disk },
-    { "Compressed files", file_chooser_pattern_compressed },
-    { "All files", file_chooser_pattern_all },
+    { "Disk images",        file_chooser_pattern_disk },
+    { "Compressed files",   file_chooser_pattern_compressed },
+    { "All files",          file_chooser_pattern_all },
     { NULL, NULL }
 };
 
+/** \brief  Array to keep track of drive numbers for each unit
+ */
+static int unit_drive_nums[NUM_DISK_UNITS] = { 0, 0, 0, 0};
 
 /** \brief  Preview widget reference
  */
 static GtkWidget *preview_widget = NULL;
+
+/** \brief  Drive number widget reference
+ */
+static GtkWidget *driveno_widget = NULL;
 
 
 /** \brief  Last directory used
@@ -68,32 +87,23 @@ static GtkWidget *preview_widget = NULL;
  */
 static gchar *last_dir = NULL;
 
+/** \brief  Last filename used */
+static gchar *last_file = NULL;
+
+/** \brief  Reference to the custom 'Autostart' button
+ */
+static GtkWidget *autostart_button;
 
 
 /** \brief  Unit number to attach disk to
  */
-static int unit_number = 8;
+static int unit_number = DRIVE_UNIT_DEFAULT;
 
-#if 0
-/** \brief  Update the last directory reference
- *
- * \param[in]   widget  dialog
+/** \brief  Drive number in unit to attach disk to
  */
-static void update_last_dir(GtkWidget *widget)
-{
-    gchar *new_dir;
+static int drive_number = 0;
 
-    new_dir = gtk_file_chooser_get_current_folder(GTK_FILE_CHOOSER(widget));
-    debug_gtk3("new dir = '%s'.", new_dir);
-    if (new_dir != NULL) {
-        /* clean up previous value */
-        if (last_dir != NULL) {
-            g_free(last_dir);
-        }
-        last_dir = new_dir;
-    }
-}
-#endif
+
 
 /** \brief  Handler for the 'toggled' event of the 'show hidden files' checkbox
  *
@@ -105,27 +115,22 @@ static void on_hidden_toggled(GtkWidget *widget, gpointer user_data)
     int state;
 
     state = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
-    debug_gtk3("show hidden files: %s.", state ? "enabled" : "disabled");
-
     gtk_file_chooser_set_show_hidden(GTK_FILE_CHOOSER(user_data), state);
 }
 
 
-#if 0
-/** \brief  Handler for the 'toggled' event of the 'show preview' checkbox
+/** \brief  Handler for the 'toggled' event of the 'attach read-only' checkbox
  *
  * \param[in]   widget      checkbox triggering the event
- * \param[in]   user_data   data for the event (unused)
+ * \param[in]   user_data   data for the event (the dialog)
  */
-static void on_preview_toggled(GtkWidget *widget, gpointer user_data)
+static void on_readonly_toggled(GtkWidget *widget, gpointer user_data)
 {
     int state;
 
     state = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
-    debug_gtk3("preview %s.", state ? "enabled" : "disabled");
+    resources_set_int_sprintf("AttachDevice%dReadonly", state, unit_number);
 }
-#endif
-
 
 
 /** \brief  Handler for the "update-preview" event
@@ -142,45 +147,137 @@ static void on_update_preview(GtkFileChooser *chooser, gpointer data)
     if (file != NULL) {
         path = g_file_get_path(file);
         if (path != NULL) {
-            debug_gtk3("called with '%s'.", path);
+            gchar *filename_locale = file_chooser_convert_to_locale(path);
 
-            content_preview_widget_set_image(preview_widget, path);
-           g_free(path);
+            content_preview_widget_set_image(preview_widget, filename_locale);
+            g_free(path);
+            g_free(filename_locale);
         }
         g_object_unref(file);
     }
 }
 
 
+/** \brief  Callback for the drive unit widget
+ *
+ * Updates the drive number widget, depending on the drive unit's type:
+ * 'greys-out' the drive number widget and sets drive number to 0 if the current
+ * unit doesn't support dual drives.
+ *
+ * \param[in]   unit    drive unit number
+ */
+static void on_unit_changed(int unit)
+{
+    int dual = drive_is_dualdrive_by_devnr(unit);
 
-static void do_autostart(GtkWidget *widget, gpointer user_data)
+    gtk_widget_set_sensitive(driveno_widget, dual);
+    drive_no_widget_update(driveno_widget,
+                           unit_drive_nums[unit - DRIVE_UNIT_MIN]);
+}
+
+
+/** \brief  Callback for the drive number widget
+ *
+ * Update drive number for the current unit, to later be used to restore the
+ * drive number widget when changing units.
+ *
+ * \param[in]   drive   drive number
+ */
+static void on_drive_num_changed(int drive)
+{
+    unit_drive_nums[unit_number - DRIVE_UNIT_MIN] = drive;
+
+}
+
+
+/** \brief  Trigger autostarting a disk image
+ *
+ * \param[in,out]   widget      dialog
+ * \param[in]       index       file index in the image's directory listing
+ * \param[in]       autostart   issue "RUN:" after loading
+ */
+static void do_autostart(GtkWidget *widget, int index, int autostart)
 {
     gchar *filename;
-    int index = GPOINTER_TO_INT(user_data);
+    gchar *filename_locale;
 
-    lastdir_update(widget, &last_dir);
+    mainlock_assert_lock_obtained();
+
+    lastdir_update(widget, &last_dir, &last_file);
     filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
-    debug_gtk3("Autostarting file '%s'.", filename);
+    /* convert filename to current locale */
+    filename_locale = file_chooser_convert_to_locale(filename);
+
     /* if this function exists, why is there no attach_autodetect()
      * or something similar? -- compyx */
     if (autostart_disk(
-                filename,
+                unit_number,
+                drive_number,
+                filename_locale,
                 NULL,   /* program name */
                 index,  /* Program number? Probably used when clicking
                            in the preview widget to load the proper
                            file in an image */
-                AUTOSTART_MODE_RUN) < 0) {
+                autostart ? AUTOSTART_MODE_RUN : AUTOSTART_MODE_LOAD) < 0) {
         /* oeps */
-        debug_gtk3("autostart disk attach failed.");
+        log_error(LOG_ERR, "autostart disk attach failed.");
     }
     g_free(filename);
-    gtk_widget_destroy(widget);
+    g_free(filename_locale);
 }
 
 
-static void on_file_activated(GtkWidget *chooser, gpointer data)
+/** \brief  Attach a disk image
+ *
+ * \param[in,out]   widget      dialog
+ * \param[in]       user_data   file index in the image
+ */
+static void do_attach(GtkWidget *widget, gpointer user_data)
 {
-    do_autostart(chooser, data);
+    gchar *filename;
+    gchar *filename_locale;
+    gchar buffer[1024];
+
+    lastdir_update(widget, &last_dir, &last_file);
+
+    filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
+    /* convert filename to current locale */
+    filename_locale = file_chooser_convert_to_locale(filename);
+
+    /* copied from Gtk2: I fail to see how brute-forcing your way
+        * through file types is 'smart', but hell, it works */
+    if (file_system_attach_disk(unit_number, drive_number, filename_locale) < 0) {
+        /* failed */
+        g_snprintf(buffer, 1024, "Unit #%d: failed to attach '%s'",
+                unit_number, filename);
+    } else {
+        g_snprintf(buffer, 1024, "Unit #%d: attached '%s'",
+                unit_number, filename);
+    }
+    ui_display_statustext(buffer, 1);
+    g_free(filename_locale);
+}
+
+
+/** \brief  Handler for 'selection-changed' event of the preview widget
+ *
+ * Checks if a proper selection was made and activates the 'Autostart' button
+ * if so, disabled it otherwise
+ *
+ * \param[in]   chooser Parent dialog
+ * \param[in]   data    Extra event data (unused)
+ */
+static void on_selection_changed(GtkFileChooser *chooser, gpointer data)
+{
+    gchar *filename;
+
+    filename = gtk_file_chooser_get_filename(chooser);
+    if (filename != NULL) {
+        gtk_widget_set_sensitive(autostart_button, TRUE);
+        g_free(filename);
+    } else {
+        gtk_widget_set_sensitive(autostart_button, FALSE);
+    }
 }
 
 
@@ -191,60 +288,111 @@ static void on_file_activated(GtkWidget *chooser, gpointer data)
  *
  * \param[in]   widget      the dialog
  * \param[in]   response_id response ID
- * \param[in]   user_data   extra data (unused)
+ * \param[in]   user_data   index in the preview widget
  *
  * TODO:    proper (error) messages, which requires implementing ui_error() and
  *          ui_message() and moving them into gtk3/widgets to avoid circular
  *          references
  */
-static void on_response(GtkWidget *widget, gint response_id,
-                        gpointer user_data)
+static void on_response(GtkWidget *widget, gint response_id, gpointer user_data)
 {
-    gchar *filename;
-    int index;
+    gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
+    int index = content_preview_widget_get_index(preview_widget);
+    int autostart = 0;
 
-    index = GPOINTER_TO_INT(user_data);
+    resources_get_int("AutostartOnDoubleclick", &autostart);
 
-    debug_gtk3("got response ID %d, index %d.", response_id, index);
-
+    /* first, to make the following logic less funky, map some events to others,
+       depending on whether autostart-on-doubleclick is enabled or not, and 
+       depending on the event coming from the preview window or not. */
     switch (response_id) {
-
-        /* 'Open' button, double-click on file */
-        case GTK_RESPONSE_ACCEPT:
-            lastdir_update(widget, &last_dir);
-            filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
-            /* ui_message("Opening file '%s' ...", filename); */
-            debug_gtk3("Attaching file '%s' to unit #%d.",
-                    filename, unit_number);
-
-            /* copied from Gtk2: I fail to see how brute-forcing your way
-             * through file types is 'smart', but hell, it works */
-            if (file_system_attach_disk(unit_number, filename) < 0) {
-                /* failed */
-                debug_gtk3("disk attach failed.");
+        /* double-click on file in the preview widget when autostart-on-doubleclick is NOT enabled */
+        case VICE_RESPONSE_AUTOLOAD_INDEX:
+        /* double-click on file in the preview widget when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_AUTOSTART_INDEX:
+            if ((index < 0) || (filename == NULL)) {
+                response_id = VICE_RESPONSE_INVALID;   /* drop this event */
             }
-            g_free(filename);
-            gtk_widget_destroy(widget);
             break;
-
-        /* 'Autostart' button clicked */
-        case VICE_RESPONSE_AUTOSTART:
-            do_autostart(widget, user_data);
-           break;
-
-        /* 'Close'/'X' button */
-        case GTK_RESPONSE_REJECT:
-            gtk_widget_destroy(widget);
+        /* 'Open' button clicked when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_CUSTOM_OPEN:
+            if (filename == NULL) {
+                response_id = VICE_RESPONSE_INVALID;   /* drop this event */
+            } else if (index >= 0) {
+                response_id = VICE_RESPONSE_AUTOLOAD_INDEX;
+            }
+            break;
+        /* double-click on file in the main file chooser,
+           'Autostart' button when autostart-on-doubleclick is enabled
+           'Open' button when autostart-on-doubleclick is NOT enabled */
+        case GTK_RESPONSE_ACCEPT:
+            if (filename == NULL) {
+                response_id = VICE_RESPONSE_INVALID;   /* drop this event */
+            } else if ((index >= 0) && (autostart == 0)) {
+                response_id = VICE_RESPONSE_AUTOLOAD_INDEX;
+            } else if ((index >= 0) && (autostart == 1)) {
+                response_id = VICE_RESPONSE_AUTOSTART_INDEX;
+            } else if (autostart == 0) {
+                response_id = VICE_RESPONSE_CUSTOM_OPEN;
+            } else {
+                response_id = VICE_RESPONSE_AUTOSTART;
+            }
             break;
         default:
             break;
     }
 
-    ui_set_ignore_mouse_hide(FALSE);
+    switch (response_id) {
+        /* 'Open' button clicked when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_CUSTOM_OPEN:
+            do_attach(widget, user_data);
+
+            mainlock_release();
+            gtk_widget_destroy(widget);
+            mainlock_obtain();
+            break;
+
+        /* 'Autostart' button clicked when autostart-on-doubleclick is NOT enabled */
+        case VICE_RESPONSE_AUTOSTART:
+        /* double-click on file in the preview widget when autostart-on-doubleclick is enabled */
+        case VICE_RESPONSE_AUTOSTART_INDEX:
+            do_autostart(widget, index + 1, 1);
+
+            mainlock_release();
+            gtk_widget_destroy(widget);
+            mainlock_obtain();
+            break;
+
+        /* double-click on file in the preview widget when autostart-on-doubleclick is NOT enabled */
+        case VICE_RESPONSE_AUTOLOAD_INDEX:
+            do_autostart(widget, index + 1, 0);
+
+            mainlock_release();
+            gtk_widget_destroy(widget);
+            mainlock_obtain();
+            break;
+
+        /* 'Close'/'X' button */
+        case GTK_RESPONSE_REJECT:
+            mainlock_release();
+            gtk_widget_destroy(widget);
+            mainlock_obtain();
+            break;
+        default:
+            break;
+    }
+
+    if (filename != NULL) {
+        g_free(filename);
+    }
 }
 
 
+
 /** \brief  Create the 'extra' widget
+ *
+ * \param[in]   parent  parent widget
+ * \param[in]   unit    unit number
  *
  * \return  GtkGrid
  *
@@ -255,9 +403,7 @@ static GtkWidget *create_extra_widget(GtkWidget *parent, int unit)
     GtkWidget *grid;
     GtkWidget *hidden_check;
     GtkWidget *readonly_check;
-#if 0
-    GtkWidget *preview_check;
-#endif
+    int readonly_state;
 
     grid = gtk_grid_new();
     gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
@@ -268,27 +414,35 @@ static GtkWidget *create_extra_widget(GtkWidget *parent, int unit)
     gtk_grid_attach(GTK_GRID(grid), hidden_check, 0, 0, 1, 1);
 
     readonly_check = gtk_check_button_new_with_label("Attach read-only");
+    g_signal_connect(readonly_check, "toggled", G_CALLBACK(on_readonly_toggled),
+            (gpointer)(parent));
     gtk_grid_attach(GTK_GRID(grid), readonly_check, 1, 0, 1, 1);
+    resources_get_int_sprintf("AttachDevice%dReadonly", &readonly_state, unit_number);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(readonly_check), readonly_state);
 
-#if 0
-    preview_check = gtk_check_button_new_with_label("Show image contents");
-    g_signal_connect(preview_check, "toggled", G_CALLBACK(on_preview_toggled),
-            NULL);
-    gtk_grid_attach(GTK_GRID(grid), preview_check, 2, 0, 1, 1);
-#endif
     /* second row, three cols wide */
     gtk_grid_attach(GTK_GRID(grid),
-            drive_unit_widget_create(unit, &unit_number, NULL),
+            drive_unit_widget_create(unit, &unit_number, on_unit_changed),
             0, 1, 3, 1);
+
+    /* add drive number widget */
+    driveno_widget = drive_no_widget_create(0, &drive_number, on_drive_num_changed);
+    gtk_widget_set_sensitive(driveno_widget, drive_is_dualdrive_by_devnr(unit));
+
+    gtk_grid_attach(GTK_GRID(grid),
+            driveno_widget,
+            3, 1, 3, 1);
 
     gtk_widget_show_all(grid);
     return grid;
 }
 
 
+
 /** \brief  Create the disk attach dialog
  *
  * \param[in]   parent  parent widget, used to get the top level window
+ * \param[in]   unit    drive unit
  *
  * \return  GtkFileChooserDialog
  */
@@ -296,8 +450,9 @@ static GtkWidget *create_disk_attach_dialog(GtkWidget *parent, int unit)
 {
     GtkWidget *dialog;
     size_t i;
+    int autostart = 0;
 
-    ui_set_ignore_mouse_hide(TRUE);
+    resources_get_int("AutostartOnDoubleclick", &autostart);
 
     /* create new dialog */
     dialog = gtk_file_chooser_dialog_new(
@@ -305,20 +460,41 @@ static GtkWidget *create_disk_attach_dialog(GtkWidget *parent, int unit)
             ui_get_active_window(),
             GTK_FILE_CHOOSER_ACTION_OPEN,
             /* buttons */
-            "Open", GTK_RESPONSE_ACCEPT,
-            "Autostart", VICE_RESPONSE_AUTOSTART,
-            "Close", GTK_RESPONSE_REJECT,
+            /* buttons */
             NULL, NULL);
 
+    /* We need to manually add the buttons here, not using the constructor
+     * above, to keep the order of the buttons the same as in the other
+     * 'attach' dialogs. Gtk doesn't allow getting references to buttons when
+     * added via the constructor, meaning we cannot get a reference to the
+     * "Autostart" button in order to "grey it out".
+     */
+    /* to handle the "double click means autostart" option, we need to always
+       connect a button to GTK_RESPONSE_ACCEPT, else double clicks will stop
+       working */
+    if (autostart) {
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "Attach / Load", VICE_RESPONSE_CUSTOM_OPEN);
+        autostart_button = gtk_dialog_add_button(GTK_DIALOG(dialog),
+                                                "Autostart",
+                                                GTK_RESPONSE_ACCEPT);
+    } else {
+        gtk_dialog_add_button(GTK_DIALOG(dialog), "Attach / Load", GTK_RESPONSE_ACCEPT);
+        autostart_button = gtk_dialog_add_button(GTK_DIALOG(dialog),
+                                                "Autostart",
+                                                VICE_RESPONSE_AUTOSTART);
+    }
+
+    gtk_widget_set_sensitive(autostart_button, FALSE);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Close", GTK_RESPONSE_REJECT);
     /* set modal so mouse-grab doesn't get triggered */
     gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
 
     /* set last directory */
-    lastdir_set(dialog, &last_dir);
+    lastdir_set(dialog, &last_dir, &last_file);
 
     /* add 'extra' widget: 'readony' and 'show preview' checkboxes */
-    if (unit < 8 || unit > 11) {
-        unit = 8;
+    if (unit < DRIVE_UNIT_MIN || unit > DRIVE_UNIT_MAX) {
+        unit = DRIVE_UNIT_DEFAULT;
     }
     gtk_file_chooser_set_extra_widget(GTK_FILE_CHOOSER(dialog),
                                       create_extra_widget(dialog, unit));
@@ -327,6 +503,7 @@ static GtkWidget *create_disk_attach_dialog(GtkWidget *parent, int unit)
             dialog, diskcontents_filesystem_read, on_response);
     gtk_file_chooser_set_preview_widget(GTK_FILE_CHOOSER(dialog),
             preview_widget);
+
 
     /* add filters */
     for (i = 0; filters[i].name != NULL; i++) {
@@ -340,8 +517,8 @@ static GtkWidget *create_disk_attach_dialog(GtkWidget *parent, int unit)
             G_CALLBACK(on_response), GINT_TO_POINTER(0));
     g_signal_connect(dialog, "update-preview",
             G_CALLBACK(on_update_preview), NULL);
-    g_signal_connect(dialog, "file-activated",
-            G_CALLBACK(on_file_activated), NULL);
+    g_signal_connect_unlocked(dialog, "selection-changed",
+            G_CALLBACK(on_selection_changed), NULL);
     return dialog;
 
 }
@@ -354,15 +531,18 @@ static GtkWidget *create_disk_attach_dialog(GtkWidget *parent, int unit)
  * \param[in]   widget      menu item triggering the callback
  * \param[in]   user_data   integer from 8-11 for the default drive to attach
  *                          (for some reason auto-attach always ultra uses #8)
+ *
+ * \return  TRUE
  */
-void ui_disk_attach_callback(GtkWidget *widget, gpointer user_data)
+gboolean ui_disk_attach_dialog_show(GtkWidget *widget, gpointer user_data)
 {
     GtkWidget *dialog;
 
     dialog = create_disk_attach_dialog(widget, GPOINTER_TO_INT(user_data));
     gtk_widget_show(dialog);
-
+    return TRUE;
 }
+
 
 /** \brief  Callback for "detach from #%d" menu items
  *
@@ -372,12 +552,21 @@ void ui_disk_attach_callback(GtkWidget *widget, gpointer user_data)
  * \param[in]   widget      menu item triggering the callback
  * \param[in]   user_data   integer from 8-11 for the drive to
  *                          close, or -1 to detach all disks
+ *
+ * \return  TRUE
  */
-void ui_disk_detach_callback(GtkWidget *widget, gpointer user_data)
+gboolean ui_disk_detach_callback(GtkWidget *widget, gpointer user_data)
 {
     /* This function does its own interpretation and input validation,
      * so we can simply forward the call directly. */
-    file_system_detach_disk(GPOINTER_TO_INT(user_data));
+    int unit;
+    int drive;
+
+    unit = GPOINTER_TO_INT(user_data) >> 8;
+    drive = GPOINTER_TO_INT(user_data) & 0xff;
+
+    file_system_detach_disk(unit, drive);
+    return TRUE;
 }
 
 
@@ -385,15 +574,18 @@ void ui_disk_detach_callback(GtkWidget *widget, gpointer user_data)
  *
  * \param[in]   widget  widget (unused)
  * \param[in]   data    extra event data (unused)
+ *
+ * \return  TRUE
  */
-void ui_disk_detach_all_callback(GtkWidget *widget, gpointer data)
+gboolean ui_disk_detach_all_callback(GtkWidget *widget, gpointer data)
 {
     int unit;
 
-    /* TODO: figure out where these integer literals are defined */
-    for (unit = 8; unit < 12; unit++) {
-        file_system_detach_disk(unit);
+    for (unit = DRIVE_UNIT_MIN; unit <= DRIVE_UNIT_MAX; unit++) {
+        file_system_detach_disk(unit, 0);
+        file_system_detach_disk(unit, 1);
     }
+    return TRUE;
 }
 
 
@@ -401,5 +593,5 @@ void ui_disk_detach_all_callback(GtkWidget *widget, gpointer data)
  */
 void ui_disk_attach_shutdown(void)
 {
-    lastdir_shutdown(&last_dir);
+    lastdir_shutdown(&last_dir, &last_file);
 }

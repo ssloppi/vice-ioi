@@ -114,8 +114,8 @@ static uint8_t *drv_nl10_charset = drv_nl10_rom;
 static uint8_t drv_nl10_charset_nlq[CHARSET_SIZE * 47];
 static uint8_t drv_nl10_charset_nlq_italic[CHARSET_SIZE * 47];
 
-STATIC_PROTOTYPE const uint8_t drv_nl10_charset_mapping_intl[3][8][14];
-STATIC_PROTOTYPE const uint8_t drv_nl10_charset_mapping[3][256];
+static const uint8_t drv_nl10_charset_mapping_intl[3][8][14];
+static const uint8_t drv_nl10_charset_mapping[3][256];
 
 static int drv_nl10_init_charset(void);
 static int handle_control_sequence(nl10_t *nl10, unsigned int prnr, const uint8_t c);
@@ -270,11 +270,11 @@ static int store_char(uint8_t *dest, const uint8_t *src)
     int ret = 0, s = (src[0] >> 4) & 7, e = src[0] & 15;
 
     if (s < 0 || s > 7) {
-        log_warning(drvnl10_log, "Illegal prop-start value: %u\n", s);
+        log_warning(drvnl10_log, "Illegal prop-start value: %d\n", s);
     } else if (e < 4 || e > 11) {
-        log_warning(drvnl10_log, "Illegal prop-end value: %u\n", e);
+        log_warning(drvnl10_log, "Illegal prop-end value: %d\n", e);
     } else if ((e - s) < 4) {
-        log_warning(drvnl10_log, "Illegal character width: (s=%u, e=%u)\n", s, e);
+        log_warning(drvnl10_log, "Illegal character width: (s=%d, e=%d)\n", s, e);
     } else {
         ret = 1;
     }
@@ -286,7 +286,7 @@ static int store_char(uint8_t *dest, const uint8_t *src)
         if (c != 0) {
             for (r = 0; r < 8; r++) {
                 if ((dest[c] & (1 << r)) && (dest[c + 1] & (1 << r))) {
-                    log_warning(drvnl10_log, "Illegal dot col=%u, row=%u\n", c + 1, r + 1);
+                    log_warning(drvnl10_log, "Illegal dot col=%d, row=%d\n", c + 1, r + 1);
                     dest[c + 1] = dest[c + 1] & ~(1 << r);
                     ret = 0;
                 }
@@ -310,7 +310,7 @@ static int store_char_nlq(uint8_t *dest, const uint8_t *src)
         if (c != 0 && c != 23) {
             for (r = 0; r < 8; r++) {
                 if ((dest[c] & (1 << r)) && (dest[c + 1] & (1 << r))) {
-                    log_warning(drvnl10_log, "Illegal dot col=%u, row=%u\n", c + 1, r + 1);
+                    log_warning(drvnl10_log, "Illegal dot col=%d, row=%d\n", c + 1, r + 1);
                     dest[c + 1] = dest[c + 1] & ~(1 << r);
                     ret = 0;
                 }
@@ -2008,7 +2008,7 @@ int drv_nl10_init(void)
         return -1;
     }
 
-    if (palette_load("nl10" FSDEV_EXT_SEP_STR "vpl", palette) < 0) {
+    if (palette_load("nl10" FSDEV_EXT_SEP_STR "vpl", "PRINTER", palette) < 0) {
         log_error(drvnl10_log, "Cannot load palette file `%s'.",
                   "nl10" FSDEV_EXT_SEP_STR "vpl");
         return -1;
@@ -2207,7 +2207,7 @@ static int drv_nl10_init_charset(void)
     memset(drv_nl10_charset_nlq_italic, 0, CHARSET_SIZE * 47);
 
     /* load nl-10 rom file */
-    if (sysfile_load(name, drv_nl10_rom, NL10_ROM_SIZE, NL10_ROM_SIZE) < 0) {
+    if (sysfile_load(name, "PRINTER", drv_nl10_rom, NL10_ROM_SIZE, NL10_ROM_SIZE) < 0) {
         memset(drv_nl10_rom, 0, NL10_ROM_SIZE);
         log_error(drvnl10_log, "Could not load NL-10 ROM file '%s'.", name);
         return -1;

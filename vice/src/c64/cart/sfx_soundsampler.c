@@ -59,33 +59,35 @@ static uint8_t sfx_soundsampler_sample_read(uint16_t addr);
 static void sfx_soundsampler_latch_sample(uint16_t addr, uint8_t value);
 
 static io_source_t sfx_soundsampler_io1_device = {
-    CARTRIDGE_NAME_SFX_SOUND_SAMPLER,
-    IO_DETACH_RESOURCE,
-    "SFXSoundSampler",
-    0xde00, 0xdeff, 0x01,
-    0,
-    sfx_soundsampler_latch_sample,
-    NULL,
-    NULL, /* TODO: peek */
-    NULL, /* nothing to dump */
-    CARTRIDGE_SFX_SOUND_SAMPLER,
-    0,
-    0
+    CARTRIDGE_NAME_SFX_SOUND_SAMPLER, /* name of the device */
+    IO_DETACH_RESOURCE,               /* use resource to detach the device when involved in a read-collision */
+    "SFXSoundSampler",                /* resource to set to '0' */
+    0xde00, 0xdeff, 0x00,             /* range for the device, reg:$de00, mirrors:$de01-$deff, range is different on vic20 */
+    0,                                /* read is never valid, reg is write only */
+    sfx_soundsampler_latch_sample,    /* store function */
+    NULL,                             /* NO poke function */
+    NULL,                             /* NO read function */
+    NULL,                             /* TODO: peek function */
+    NULL,                             /* nothing to dump */
+    CARTRIDGE_SFX_SOUND_SAMPLER,      /* cartridge ID */
+    IO_PRIO_NORMAL,                   /* normal priority, device read needs to be checked for collisions */
+    0                                 /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_t sfx_soundsampler_io2_device = {
-    CARTRIDGE_NAME_SFX_SOUND_SAMPLER,
-    IO_DETACH_RESOURCE,
-    "SFXSoundSampler",
-    0xdf00, 0xdfff, 0x01,
-    1,
-    sfx_soundsampler_sound_store,
-    sfx_soundsampler_sample_read,
-    NULL, /* TODO: peek */
-    NULL, /* nothing to dump */
-    CARTRIDGE_SFX_SOUND_SAMPLER,
-    0,
-    0
+    CARTRIDGE_NAME_SFX_SOUND_SAMPLER, /* name of the device */
+    IO_DETACH_RESOURCE,               /* use resource to detach the device when involved in a read-collision */
+    "SFXSoundSampler",                /* resource to set to '0' */
+    0xdf00, 0xdfff, 0x00,             /* range for the device, reg:$df00, mirrors:$df01-$dfff, range is different on vic20 */
+    1,                                /* read is always valid */
+    sfx_soundsampler_sound_store,     /* store function */
+    NULL,                             /* NO poke function */
+    sfx_soundsampler_sample_read,     /* read function */
+    NULL,                             /* TODO: peek function */
+    NULL,                             /* nothing to dump */
+    CARTRIDGE_SFX_SOUND_SAMPLER,      /* cartridge ID */
+    IO_PRIO_NORMAL,                   /* normal priority, device read needs to be checked for collisions */
+    0                                 /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *sfx_soundsampler_io1_list_item = NULL;
@@ -99,7 +101,7 @@ static const export_resource_t export_res = {
 
 /* Some prototypes are needed */
 static int sfx_soundsampler_sound_machine_init(sound_t *psid, int speed, int cycles_per_sec);
-static int sfx_soundsampler_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int sound_output_channels, int sound_chip_channels, int *delta_t);
+static int sfx_soundsampler_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int sound_output_channels, int sound_chip_channels, CLOCK *delta_t);
 static void sfx_soundsampler_sound_machine_store(sound_t *psid, uint16_t addr, uint8_t val);
 static uint8_t sfx_soundsampler_sound_machine_read(sound_t *psid, uint16_t addr);
 static void sfx_soundsampler_sound_reset(sound_t *psid, CLOCK cpu_clk);
@@ -114,17 +116,18 @@ static int sfx_soundsampler_sound_machine_channels(void)
     return 1;
 }
 
+/* SFX Sound Sampler cartridge sound chip */
 static sound_chip_t sfx_soundsampler_sound_chip = {
-    NULL, /* no open */
-    sfx_soundsampler_sound_machine_init,
-    NULL, /* no close */
-    sfx_soundsampler_sound_machine_calculate_samples,
-    sfx_soundsampler_sound_machine_store,
-    sfx_soundsampler_sound_machine_read,
-    sfx_soundsampler_sound_reset,
-    sfx_soundsampler_sound_machine_cycle_based,
-    sfx_soundsampler_sound_machine_channels,
-    0 /* chip enabled */
+    NULL,                                             /* NO sound chip open function */ 
+    sfx_soundsampler_sound_machine_init,              /* sound chip init function */
+    NULL,                                             /* NO sound chip close function */
+    sfx_soundsampler_sound_machine_calculate_samples, /* sound chip calculate samples function */
+    sfx_soundsampler_sound_machine_store,             /* sound chip store function */
+    sfx_soundsampler_sound_machine_read,              /* sound chip read function */
+    sfx_soundsampler_sound_reset,                     /* sound chip reset function */
+    sfx_soundsampler_sound_machine_cycle_based,       /* sound chip 'is_cycle_based()' function, sound chip is NOT cycle based */
+    sfx_soundsampler_sound_machine_channels,          /* sound chip 'get_amount_of_channels()' function, sound chip has 1 channel */
+    0                                                 /* chip enabled, toggled when sound chip is (de-)activated */
 };
 
 static uint16_t sfx_soundsampler_sound_chip_offset = 0;
@@ -311,7 +314,7 @@ struct sfx_soundsampler_sound_s {
 
 static struct sfx_soundsampler_sound_s snd;
 
-static int sfx_soundsampler_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int soc, int scc, int *delta_t)
+static int sfx_soundsampler_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int soc, int scc, CLOCK *delta_t)
 {
     return sound_dac_calculate_samples(&sfx_soundsampler_dac, pbuf, (int)snd.voice0 * 128, nr, soc, (soc > 1) ? 3 : 1);
 }
@@ -351,7 +354,7 @@ static void sfx_soundsampler_sound_reset(sound_t *psid, CLOCK cpu_clk)
    BYTE  | sound data |   0.0+  | sound data
  */
 
-static char snap_module_name[] = "CARTSFXSS";
+static const char snap_module_name[] = "CARTSFXSS";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 
@@ -387,13 +390,13 @@ int sfx_soundsampler_snapshot_read_module(snapshot_t *s)
     }
 
     /* Do not accept versions higher than current */
-    if (vmajor > SNAP_MAJOR || vminor > SNAP_MINOR) {
+    if (snapshot_version_is_bigger(vmajor, vminor, SNAP_MAJOR, SNAP_MINOR)) {
         snapshot_set_error(SNAPSHOT_MODULE_HIGHER_VERSION);
         goto fail;
     }
 
     /* new in 0.1 */
-    if (SNAPVAL(vmajor, vminor, 0, 1)) {
+    if (!snapshot_version_is_smaller(vmajor, vminor, 0, 1)) {
         if (SMR_B_INT(m, &sfx_soundsampler_io_swap) < 0) {
             goto fail;
         }

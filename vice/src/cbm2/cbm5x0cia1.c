@@ -131,7 +131,8 @@ static void store_ciapa(cia_context_t *cia_context, CLOCK rclk, uint8_t byte)
 {
     set_joyport_pot_mask((byte >> 6) & 3);
 
-    store_joyport_dig(JOYPORT_2, byte, 0xff);
+    store_joyport_dig(JOYPORT_1, byte >> 2, 0x10);
+    store_joyport_dig(JOYPORT_2, byte >> 3, 0x10);
 
     parallel_cpu_set_bus((uint8_t)(cia1_ieee_is_output ? byte : 0xff));
 }
@@ -147,7 +148,8 @@ static void undump_ciapb(cia_context_t *cia_context, CLOCK rclk, uint8_t b)
 
 static void store_ciapb(cia_context_t *cia_context, CLOCK rclk, uint8_t byte)
 {
-    store_joyport_dig(JOYPORT_1, byte, 0xff);
+    store_joyport_dig(JOYPORT_1, byte, 0x0f);
+    store_joyport_dig(JOYPORT_2, byte >> 4, 0x0f);
 }
 
 /* read_* functions must return 0xff if nothing to read!!! */
@@ -162,12 +164,14 @@ static uint8_t read_ciapa(cia_context_t *cia_context)
     /* this reads the 8 bit IEEE488 data bus, but joystick 1 and 2 buttons
        can pull down inputs pa6 and pa7 resp. */
     byte = parallel_bus;
-    if (parallel_debug) {
+#ifdef DEBUG
+    if (debug.ieee) {
         log_message(LOG_DEFAULT,
                     "read: parallel_bus=%02x, pra=%02x, ddra=%02x -> %02x\n",
                     parallel_bus, cia_context->c_cia[CIA_PRA],
                     cia_context->c_cia[CIA_DDRA], byte);
     }
+#endif
     byte = ((byte & ~(cia_context->c_cia[CIA_DDRA]))
             | (cia_context->c_cia[CIA_PRA] & cia_context->c_cia[CIA_DDRA]))
            & ~(((joy1 & 0x10) ? 0x40 : 0)
@@ -204,7 +208,7 @@ static void store_sdr(cia_context_t *cia_context, uint8_t byte)
 void cia1_init(cia_context_t *cia_context)
 {
     ciacore_init(machine_context.cia1, maincpu_alarm_context,
-                 maincpu_int_status, maincpu_clk_guard);
+                 maincpu_int_status);
 }
 
 void cia1_set_timing(cia_context_t *cia_context, int tickspersec, int powerfreq)

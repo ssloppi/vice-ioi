@@ -36,27 +36,20 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
+#include "vice_gtk3.h"
 #include "machine.h"
 #include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "basedialogs.h"
-#include "openfiledialog.h"
-#include "savefiledialog.h"
 #include "cartridge.h"
-#include "cartimagewidget.h"
-#include "carthelpers.h"
 
 #include "ramcartwidget.h"
 
 
-/** \brief  List of supported RAM sizes
+/** \brief  List of supported RAM sizes in KiB
  */
 static const vice_gtk3_radiogroup_entry_t ram_sizes[] = {
-    { "64KB", 64 },
-    { "128KB", 128 },
-    { NULL, -1 }
+    { "64KiB",  64 },
+    { "128KiB", 128 },
+    { NULL,     -1 }
 };
 
 
@@ -83,7 +76,7 @@ static GtkWidget *create_ramcart_readonly_widget(void)
 }
 
 
-/** \brief  Create radio button group to determine GEORAM RAM size
+/** \brief  Create radio button group to determine RAMCART size
  *
  * \return  GtkGrid
  */
@@ -92,7 +85,7 @@ static GtkWidget *create_ramcart_size_widget(void)
     GtkWidget *grid;
     GtkWidget *radio_group;
 
-    grid = uihelpers_create_grid_with_label("RAM Size", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "RAM Size", 1);
     radio_group = vice_gtk3_resource_radiogroup_new("RAMCARTsize", ram_sizes,
             GTK_ORIENTATION_VERTICAL);
     g_object_set(radio_group, "margin-left", 16, NULL);
@@ -102,15 +95,17 @@ static GtkWidget *create_ramcart_size_widget(void)
 }
 
 
-/** \brief  Create widget to load/save GEORAM image file
+/** \brief  Create widget to load/save RAMCART image file
  *
  * \return  GtkGrid
  */
-static GtkWidget *create_ramcart_image_widget(GtkWidget *parent)
+static GtkWidget *create_ramcart_image_widget(void)
 {
-    return cart_image_widget_create(parent, "RAMCART image",
+    return cart_image_widget_create(
+            NULL, "RAMCART image",
             "RAMCARTfilename", "RAMCARTImageWrite",
             carthelpers_save_func, carthelpers_flush_func,
+            carthelpers_can_save_func, carthelpers_can_flush_func,
             CARTRIDGE_NAME_RAMCART, CARTRIDGE_RAMCART);
 
 }
@@ -118,7 +113,7 @@ static GtkWidget *create_ramcart_image_widget(GtkWidget *parent)
 
 /** \brief  Create widget to control RAM Expansion Module resources
  *
- * \param[in]   parent  parent widget, used for dialogs
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -135,12 +130,12 @@ GtkWidget *ramcart_widget_create(GtkWidget *parent)
     gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
 
     ramcart_enable = create_ramcart_enable_widget();
-    gtk_grid_attach(GTK_GRID(grid), ramcart_enable, 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), ramcart_enable, 0, 0, 2, 1);
 
     ramcart_size = create_ramcart_size_widget();
     gtk_grid_attach(GTK_GRID(grid), ramcart_size, 0, 1, 1, 1);
 
-    ramcart_image = create_ramcart_image_widget(parent);
+    ramcart_image = create_ramcart_image_widget();
     gtk_grid_attach(GTK_GRID(grid), ramcart_image, 1, 1, 1, 1);
 
     ramcart_readonly = create_ramcart_readonly_widget();

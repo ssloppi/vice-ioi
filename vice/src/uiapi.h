@@ -32,8 +32,12 @@
 #include "types.h"
 
 typedef enum {
-    UI_JAM_RESET, UI_JAM_HARD_RESET, UI_JAM_MONITOR, UI_JAM_NONE
+    UI_JAM_INVALID = -1, UI_JAM_RESET, UI_JAM_HARD_RESET, UI_JAM_MONITOR, UI_JAM_NONE
 } ui_jam_action_t;
+
+typedef enum {
+    UI_EXTEND_IMAGE_INVALID = -1, UI_EXTEND_IMAGE_NEVER, UI_EXTEND_IMAGE_ALWAYS
+} ui_extendimage_action_t;
 
 typedef enum {
     UI_DRIVE_ENABLE_NONE = 0,
@@ -47,10 +51,11 @@ typedef enum {
 extern int ui_resources_init(void);
 extern void ui_resources_shutdown(void);
 extern int ui_cmdline_options_init(void);
-extern int ui_init(int *argc, char **argv);
+extern void ui_init_with_args(int *argc, char **argv);
 extern int ui_init_finish(void);
 extern int ui_init_finalize(void);
 extern void ui_shutdown(void);
+extern int ui_init(void);
 
 /* Print a message.  */
 extern void ui_message(const char *format, ...);
@@ -71,8 +76,8 @@ extern void ui_display_drive_track(unsigned int drive_number,
                                    unsigned int drive_base,
                                    unsigned int half_track_number);
 /* The pwm value will vary between 0 and 1000.  */
-extern void ui_display_drive_led(int drive_number, unsigned int pwm1, unsigned int led_pwm2);
-extern void ui_display_drive_current_image(unsigned int drive_number, const char *image);
+extern void ui_display_drive_led(unsigned int drive_number, unsigned int drive_base, unsigned int led_pwm1, unsigned int led_pwm2);
+extern void ui_display_drive_current_image(unsigned int unit_number, unsigned int drive_number, const char *image);
 extern int ui_extend_image_dialog(void);
 
 /* Tape related UI */
@@ -85,21 +90,15 @@ extern void ui_display_tape_current_image(const char *image);
 /* Show a CPU JAM dialog.  */
 extern ui_jam_action_t ui_jam_dialog(const char *format, ...);
 
-/* Update all menu entries.  */
-extern void ui_update_menus(void);
-
 /* Recording UI */
 extern void ui_display_playback(int playback_status, char *version);
 extern void ui_display_recording(int recording_status);
 extern void ui_display_event_time(unsigned int current, unsigned int total);
 
 /* Joystick UI */
-extern void ui_display_joyport(uint8_t *joyport);
+extern void ui_display_joyport(uint16_t *joyport);
 
 /* Volume UI */
 void ui_display_volume(int vol);
-
-/* Event related UI. */
-extern void ui_dispatch_next_event(void);
 
 #endif

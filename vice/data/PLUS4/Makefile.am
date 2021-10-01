@@ -1,4 +1,4 @@
-plus4dir = $(VICEDIR)/PLUS4
+plus4dir = $(VICE_DATADIR)/PLUS4
 
 roms = \
 	3plus1hi \
@@ -21,10 +21,13 @@ palettes = \
 gtk3_keymaps = \
 	gtk3_pos.vkm \
 	gtk3_sym.vkm \
+	gtk3_sym_fr.vkm \
 	gtk3_sym_de.vkm
 
 sdl_keymaps = \
 	sdl_hotkeys.vkm \
+	sdl_sym_de.vkm \
+	sdl_pos_fr.vkm \
 	sdl_pos.vkm
 
 if SDL_COMPILE

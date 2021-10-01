@@ -4,8 +4,9 @@
  * \author  Bas Wassink <b.wassink@ziggo.nl>
  */
 
-/* FIXME:   Not sure the following is correct:
+/* The machines mentioned here may not be correct:
  *
+ * $VICERES UserportDevice              -vsid
  * $VICERES PrinterUserPort             -vsid
  * $VICERES PrinterUserportDriver       -vsid
  * $VICERES PrinterUserportOutput       -vsid
@@ -40,11 +41,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "resourcecheckbutton.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
+#include "vice_gtk3.h"
 #include "resources.h"
 #include "printer.h"
+#include "userport.h"
 
 #include "userportprinterwidget.h"
 
@@ -52,9 +52,9 @@
 /** \brief  List of text output devices
  */
 static const vice_gtk3_radiogroup_entry_t text_devices[] = {
-    { "#1 (file dump", 0 },
-    { "#2 (exec)", 1 },
-    { "#3 (exec)", 2 },
+    { "#1", 0 },
+    { "#2", 1 },
+    { "#3", 2 },
     { NULL, -1 }
 };
 
@@ -70,7 +70,6 @@ static void on_driver_toggled(GtkRadioButton *radio, gpointer user_data)
     if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(radio))) {
         const char *driver = (const char *)user_data;
 
-        debug_gtk3("setting 'PrinterUserportDriver' to '%s'.", driver);
         resources_set_string("PrinterUserportDriver", driver);
     }
 }
@@ -87,40 +86,50 @@ static void on_output_mode_toggled(GtkRadioButton *radio, gpointer user_data)
     if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(radio))) {
         const char *mode = (const char *)user_data;
 
-        debug_gtk3("setting 'PrinterUserportOutput' to '%s'.", mode);
         resources_set_string("PrinterUserportOutput", mode);
     }
 }
 
 
-/** \brief  Handler for the "toggled" event of the text device widget
+/** \brief  Handler for the 'toggled' event of the userport emulation checkbox
  *
- * \param[in]   radio       radio button
- * \param[in]   user_data   new value for the resource (`int`)
+ * \param[in]   self    checkbox
+ * \param[in]   data    extra event data (unused)
  */
-static void on_text_device_toggled(GtkWidget *radio, gpointer user_data)
+static void on_userport_emulation_toggled(GtkWidget *self, gpointer data)
 {
-
-    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(radio))) {
-        int device = GPOINTER_TO_INT(user_data);
-
-        debug_gtk3("setting 'PrinterUserportTextDevice' to %d.", device);
-        resources_set_int("PrinterUserportTextDevice", device);
+    if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(self))) {
+        resources_set_int("UserportDevice", USERPORT_DEVICE_PRINTER);
+    } else {
+        resources_set_int("UserportDevice", USERPORT_DEVICE_NONE);
     }
 }
 
 
-/** \brief  Create checkbox to control the PrinterUserport resource
+/** \brief  Create checkbox to control the UserportDevice resource
+ *
+ * Set UserportDevice to either PRINTER or NONE.
  *
  * \return  GtkCheckButton
  */
 static GtkWidget *create_userport_emulation_widget(void)
 {
     GtkWidget *check;
+    int device;
 
-    check = vice_gtk3_resource_check_button_new("PrinterUserPort",
-            "Enable userport printer emulation");
+    if (resources_get_int("UserportDevice", &device) < 0) {
+        device = USERPORT_DEVICE_PRINTER;
+    }
+
+    check = gtk_check_button_new_with_label("Enable userport printer emulation");
     g_object_set(check, "margin-left", 16, NULL);
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(check),
+                                device == USERPORT_DEVICE_PRINTER);
+    g_signal_connect(check,
+                     "toggled",
+                     G_CALLBACK(on_userport_emulation_toggled),
+                     NULL);
+
     return check;
 }
 
@@ -142,7 +151,7 @@ static GtkWidget *create_driver_widget(void)
     const char *driver;
 
     /* build grid */
-    grid = uihelpers_create_grid_with_label("Driver", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Driver", 1);
     /* set DeviceNumber property to allow the update function to work */
 
     /* ASCII */
@@ -192,8 +201,7 @@ static GtkWidget *create_output_mode_widget(void)
     GtkWidget *radio_gfx;
     GSList *group = NULL;
 
-    grid = uihelpers_create_grid_with_label("Output mode", 1);
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Output mode", 1);
 
     radio_text = gtk_radio_button_new_with_label(group, "Text");
     g_object_set(radio_text, "margin-left", 16, NULL);
@@ -223,13 +231,15 @@ static GtkWidget *create_output_mode_widget(void)
 static GtkWidget *create_text_device_widget(void)
 {
     GtkWidget *grid;
-    int current;
+    GtkWidget *group;
 
-    resources_get_int("PrinterUserportTextDevice", &current);
-
-    grid = uihelpers_radiogroup_create("Text output device",
-            text_devices, on_text_device_toggled, current);
-
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Output device", 1);
+    group = vice_gtk3_resource_radiogroup_new(
+            "PrinterUserPortTextDevice",
+            text_devices,
+            GTK_ORIENTATION_VERTICAL);
+    g_object_set(group, "margin-left", 16, NULL);
+    gtk_grid_attach(GTK_GRID(grid), group, 0, 1, 1, 1);
     gtk_widget_show_all(grid);
     return grid;
 }
@@ -243,8 +253,8 @@ GtkWidget *userport_printer_widget_create(void)
 {
     GtkWidget *grid;
 
-    grid = uihelpers_create_grid_with_label("Userport printer settings", 3);
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced_with_label(
+            -1, -1, "Userport printer settings", 3);
 
     gtk_grid_attach(GTK_GRID(grid), create_userport_emulation_widget(),
             0, 1, 3, 1);
@@ -260,9 +270,4 @@ GtkWidget *userport_printer_widget_create(void)
 
     gtk_widget_show_all(grid);
     return grid;
-}
-
-
-void userport_printer_widget_update(void)
-{
 }

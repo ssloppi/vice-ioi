@@ -363,6 +363,7 @@
                 interrupt_ack_reset(CPU_INT_STATUS);                                                          \
                 cpu_reset();                                                                                  \
                 bank_start = bank_limit = 0; /* prevent caching */                                            \
+                LOCAL_SET_INTERRUPT(1);                                                                       \
                 JUMP(LOAD_ADDR(0xfffc));                                                                      \
                 DMA_ON_RESET;                                                                                 \
             }                                                                                                 \
@@ -475,6 +476,14 @@
         CLK_ADD(CLK, CYCLES_1);     \
         STORE_ZERO(addr, value);    \
         CLK_ADD(CLK, CYCLES_1);     \
+    } while (0)
+
+#define STORE_ZERO_RRW_X(addr, value)      \
+    do {                                   \
+        LOAD_ZERO((addr) + reg_x);         \
+        CLK_ADD(CLK, CYCLES_1);            \
+        STORE_ZERO((addr) + reg_x, value); \
+        CLK_ADD(CLK, CYCLES_1);            \
     } while (0)
 
 #define STORE_ABS(addr, value)  \
@@ -1632,8 +1641,12 @@
 #endif
 
 #ifdef FEATURE_CPUMEMHISTORY
+        CLOCK history_clk;
 #ifndef DRIVE_CPU
+        history_clk = maincpu_clk;
         memmap_state |= (MEMMAP_STATE_INSTR | MEMMAP_STATE_OPCODE);
+#else
+        history_clk = CLK;
 #endif
 #endif
         SET_LAST_ADDR(reg_pc);
@@ -1647,11 +1660,13 @@
         }
 #endif
         if (p0 == 0x20) {
-            monitor_cpuhistory_store(reg_pc, p0, p1, LOAD(reg_pc + 2), reg_a, reg_x, reg_y, reg_sp, LOCAL_STATUS());
+            monitor_cpuhistory_store(history_clk, reg_pc, p0, p1, LOAD(reg_pc + 2), reg_a, reg_x, reg_y, reg_sp, LOCAL_STATUS(), origin);
         } else {
-            monitor_cpuhistory_store(reg_pc, p0, p1, p2 >> 8, reg_a, reg_x, reg_y, reg_sp, LOCAL_STATUS());
+            monitor_cpuhistory_store(history_clk, reg_pc, p0, p1, p2 >> 8, reg_a, reg_x, reg_y, reg_sp, LOCAL_STATUS(), origin);
         }
+#ifndef DRIVE_CPU
         memmap_state &= ~(MEMMAP_STATE_INSTR | MEMMAP_STATE_OPCODE);
+#endif
 #endif
 
 #ifdef DEBUG
@@ -1804,7 +1819,7 @@ trap_skipped:
                 break;
 
             case 0x16:          /* ASL $nn,X */
-                ASL(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW);
+                ASL(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW_X);
                 break;
 
             case 0x17:          /* RMB1 $nn (65C02) / single byte, single cycle NOP (65SC02) */
@@ -1912,7 +1927,7 @@ trap_skipped:
                 break;
 
             case 0x36:          /* ROL $nn,X */
-                ROL(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW);
+                ROL(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW_X);
                 break;
 
             case 0x37:          /* RMB3 $nn (65C02) / single byte, single cycle NOP (65SC02) */
@@ -2012,7 +2027,7 @@ trap_skipped:
                 break;
 
             case 0x56:          /* LSR $nn,X */
-                LSR(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW);
+                LSR(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW_X);
                 break;
 
             case 0x57:          /* RMB5 $nn (65C02) / single byte, single cycle NOP (65SC02) */
@@ -2116,7 +2131,7 @@ trap_skipped:
                 break;
 
             case 0x76:          /* ROR $nn,X */
-                ROR(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW);
+                ROR(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW_X);
                 break;
 
             case 0x77:          /* RMB7 $nn (65C02) / single byte, single cycle NOP (65SC02) */
@@ -2444,7 +2459,7 @@ trap_skipped:
                 break;
 
             case 0xd6:          /* DEC $nn,X */
-                DEC(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW);
+                DEC(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW_X);
                 break;
 
             case 0xd7:          /* SMB5 $nn (65C02) / single byte, single cycle NOP (65SC02) */
@@ -2548,7 +2563,7 @@ trap_skipped:
                 break;
 
             case 0xf6:          /* INC $nn,X */
-                INC(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW);
+                INC(p1, CYCLES_2, SIZE_2, LOAD_ZERO_X, STORE_ZERO_RRW_X);
                 break;
 
             case 0xf7:          /* SMB7 $nn (65C02) / single byte, single cycle NOP (65SC02) */

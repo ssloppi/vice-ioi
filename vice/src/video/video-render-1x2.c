@@ -39,8 +39,7 @@ static void video_render_1x2_main(video_render_config_t *config,
                                   const unsigned int xs, const unsigned int ys,
                                   const unsigned int xt, const unsigned int yt,
                                   const unsigned int pitchs,
-                                  const unsigned int pitcht,
-                                  int depth)
+                                  const unsigned int pitcht)
 {
     const video_render_color_tables_t *colortab;
     int doublescan;
@@ -48,24 +47,8 @@ static void video_render_1x2_main(video_render_config_t *config,
     doublescan = config->doublescan;
     colortab = &config->color_tables;
 
-    switch (depth) {
-        case 8:
-            render_08_1x2_04(colortab, src, trg, width, height,
-                             xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-            return;
-        case 16:
-            render_16_1x2_04(colortab, src, trg, width, height,
-                             xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-            return;
-        case 24:
-            render_24_1x2_04(colortab, src, trg, width, height,
-                             xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-            return;
-        case 32:
-            render_32_1x2_04(colortab, src, trg, width, height,
-                             xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
-            return;
-    }
+    render_32_1x2(colortab, src, trg, width, height,
+                  xs, ys, xt, yt, pitchs, pitcht, doublescan, config);
 }
 
 void video_render_1x2_init(void)

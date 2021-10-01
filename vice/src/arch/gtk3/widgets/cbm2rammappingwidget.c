@@ -38,18 +38,17 @@
 
 #include <gtk/gtk.h>
 
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
+#include "vice_gtk3.h"
 #include "resources.h"
 
 #include "cbm2rammappingwidget.h"
 
+
 /** \brief  Struct with ram mapping resource names and labels
  */
 typedef struct ram_mapping_s {
-    const char *text;
-    char *resource;
+    const char *text;   /**< displayed text */
+    char *resource;     /**< resource name */
 } ram_mapping_t;
 
 
@@ -75,7 +74,14 @@ GtkWidget *cbm2_ram_mapping_widget_create(void)
     GtkWidget *grid;
     int i;
 
-    grid = uihelpers_create_grid_with_label("Map RAM into bank 15", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(
+            -1, 0, "Map RAM into bank 15", 1);
+    g_object_set(grid, "margin-left", 8, NULL);
+
+    /*update margins of the label */
+    GtkWidget *label = gtk_grid_get_child_at(GTK_GRID(grid), 0, 0);
+    g_object_set(label, "margin-bottom", 8, NULL);
+
     for (i = 0; mappings[i].text != NULL; i++) {
         GtkWidget *check;
 

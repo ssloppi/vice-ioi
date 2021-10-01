@@ -74,7 +74,7 @@ static char *cbmfile_find_file(const char *fsname, const char *path)
         lib_free(name2);
 
         if (equal > 0) {
-            retname = lib_stralloc(name);
+            retname = lib_strdup(name);
             break;
         }
     }
@@ -93,10 +93,10 @@ fileio_info_t *cbmfile_open(const char *file_name, const char *path,
     struct rawfile_info_s *rawfile;
     char *fsname, *rname;
 
-    fsname = lib_stralloc(file_name);
+    fsname = lib_strdup(file_name);
 
     if (!(command & FILEIO_COMMAND_FSNAME)) {
-        charset_petconvstring((uint8_t *)fsname, 1);
+        charset_petconvstring((uint8_t *)fsname, CONVERT_TO_ASCII);
     }
 
     if (cbmdos_parse_wildcard_check(fsname, (unsigned int)strlen(fsname))) {
@@ -117,10 +117,10 @@ fileio_info_t *cbmfile_open(const char *file_name, const char *path,
         return NULL;
     }
 
-    cbm_name = (uint8_t *)lib_stralloc(file_name);
+    cbm_name = (uint8_t *)lib_strdup(file_name);
 
     if (command & FILEIO_COMMAND_FSNAME) {
-        charset_petconvstring(cbm_name, 0);
+        charset_petconvstring(cbm_name, CONVERT_TO_PETSCII);
     }
 
     info = lib_malloc(sizeof(fileio_info_t));
@@ -159,11 +159,11 @@ unsigned int cbmfile_rename(const char *src_name, const char *dst_name,
     char *src_cbm, *dst_cbm;
     unsigned int rc;
 
-    src_cbm = lib_stralloc(src_name);
-    dst_cbm = lib_stralloc(dst_name);
+    src_cbm = lib_strdup(src_name);
+    dst_cbm = lib_strdup(dst_name);
 
-    charset_petconvstring((uint8_t *)src_cbm, 1);
-    charset_petconvstring((uint8_t *)dst_cbm, 1);
+    charset_petconvstring((uint8_t *)src_cbm, CONVERT_TO_ASCII);
+    charset_petconvstring((uint8_t *)dst_cbm, CONVERT_TO_ASCII);
 
     rc = rawfile_rename(src_cbm, dst_cbm, path);
 
@@ -178,8 +178,8 @@ unsigned int cbmfile_scratch(const char *file_name, const char *path)
     char *src_cbm;
     unsigned int rc;
 
-    src_cbm = lib_stralloc(file_name);
-    charset_petconvstring((uint8_t *)src_cbm, 1);
+    src_cbm = lib_strdup(file_name);
+    charset_petconvstring((uint8_t *)src_cbm, CONVERT_TO_ASCII);
 
     rc = rawfile_remove(src_cbm, path);
 
@@ -191,4 +191,14 @@ unsigned int cbmfile_scratch(const char *file_name, const char *path)
 unsigned int cbmfile_get_bytes_left(struct fileio_info_s *info)
 {
     return rawfile_get_bytes_left(info->rawfile);
+}
+
+unsigned int cbmfile_seek(struct fileio_info_s *info, off_t offset, int whence)
+{
+    return rawfile_seek(info->rawfile, offset, whence);
+}
+
+unsigned int cbmfile_tell(struct fileio_info_s *info)
+{
+    return rawfile_tell(info->rawfile);
 }

@@ -59,6 +59,9 @@ static const cmdline_option_t cmdline_options[] =
     { "-dos4000", SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
       NULL, NULL, "DosName4000", NULL,
       "<Name>", "Specify name of 4000 DOS ROM image" },
+    { "-dosCMDHD", SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
+      NULL, NULL, "DosNameCMDHD", NULL,
+      "<Name>", "Specify name of CMD HD Boot ROM image" },
     CMDLINE_LIST_END
 };
 
@@ -66,34 +69,37 @@ static cmdline_option_t cmd_drive[] =
 {
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)1,
-      NULL, "Enable 8KB RAM expansion at $2000-$3FFF" },
+      NULL, "Enable 8KiB RAM expansion at $2000-$3FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)0,
-      NULL, "Disable 8KB RAM expansion at $2000-$3FFF" },
+      NULL, "Disable 8KiB RAM expansion at $2000-$3FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)1,
-      NULL, "Enable 8KB RAM expansion at $4000-$5FFF" },
+      NULL, "Enable 8KiB RAM expansion at $4000-$5FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)0,
-      NULL, "Disable 8KB RAM expansion at $4000-$5FFF" },
+      NULL, "Disable 8KiB RAM expansion at $4000-$5FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)1,
-      NULL, "Enable 8KB RAM expansion at $6000-$7FFF" },
+      NULL, "Enable 8KiB RAM expansion at $6000-$7FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)0,
-      NULL, "Disable 8KB RAM expansion at $6000-$7FFF" },
+      NULL, "Disable 8KiB RAM expansion at $6000-$7FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)1,
-      NULL, "Enable 8KB RAM expansion at $8000-$9FFF" },
+      NULL, "Enable 8KiB RAM expansion at $8000-$9FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)0,
-      NULL, "Disable 8KB RAM expansion at $8000-$9FFF" },
+      NULL, "Disable 8KiB RAM expansion at $8000-$9FFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)1,
-      NULL, "Enable 8KB RAM expansion at $A000-$BFFF" },
+      NULL, "Enable 8KiB RAM expansion at $A000-$BFFF" },
     { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, NULL, (void *)0,
-      NULL, "Disable 8KB RAM expansion at $A000-$BFFF" },
+      NULL, "Disable 8KiB RAM expansion at $A000-$BFFF" },
+    { NULL, SET_RESOURCE, CMDLINE_ATTRIB_NEED_ARGS,
+      NULL, NULL, NULL, NULL,
+      NULL, "Fixed Disk Size" },
     CMDLINE_LIST_END
 };
 
@@ -101,7 +107,7 @@ int iec_cmdline_options_init(void)
 {
     unsigned int dnr, i;
 
-    for (dnr = 0; dnr < DRIVE_NUM; dnr++) {
+    for (dnr = 0; dnr < NUM_DISK_UNITS; dnr++) {
         cmd_drive[0].name = lib_msprintf("-drive%iram2000", dnr + 8);
         cmd_drive[0].resource_name
             = lib_msprintf("Drive%iRAM2000", dnr + 8);
@@ -132,12 +138,15 @@ int iec_cmdline_options_init(void)
         cmd_drive[9].name = lib_msprintf("+drive%irama000", dnr + 8);
         cmd_drive[9].resource_name
             = lib_msprintf("Drive%iRAMA000", dnr + 8);
+        cmd_drive[10].name = lib_msprintf("-drive%ifixedsize", dnr + 8);
+        cmd_drive[10].resource_name
+            = lib_msprintf("Drive%iFixedSize", dnr + 8);
 
         if (cmdline_register_options(cmd_drive) < 0) {
             return -1;
         }
 
-        for (i = 0; i < 10; i++) {
+        for (i = 0; i < 11; i++) {
             lib_free(cmd_drive[i].name);
             lib_free(cmd_drive[i].resource_name);
         }

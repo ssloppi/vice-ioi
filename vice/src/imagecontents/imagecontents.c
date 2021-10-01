@@ -126,7 +126,8 @@ image_contents_screencode_t *image_contents_to_screencode(image_contents_t
 
     screencode_ptr = image_contents_screencode;
 
-    sprintf((char *)rawline, "0 \"%s\" %s", contents->name, contents->id);
+    sprintf((char *)rawline, "%d \"%s\" %s", contents->partition, contents->name,
+            contents->id);
     charset_petcii_to_screencode_line(rawline, &buf, &len);
     screencode_ptr->line = buf;
     screencode_ptr->length = len;
@@ -143,7 +144,7 @@ image_contents_screencode_t *image_contents_to_screencode(image_contents_t
     }
 
     for (p = contents->file_list; p != NULL; p = p->next) {
-        sprintf((char *)rawline, "%-5d \"                  ", p->size);
+        sprintf((char *)rawline, "%-5u \"                  ", p->size);
         memcpy(&rawline[7], p->name, IMAGE_CONTENTS_FILE_NAME_LEN);
 
         for (i = 0; i < IMAGE_CONTENTS_FILE_NAME_LEN; i++) {
@@ -193,7 +194,8 @@ image_contents_screencode_t *image_contents_to_screencode(image_contents_t
  */
 char *image_contents_to_string(image_contents_t * contents, char out_charset)
 {
-    uint8_t *str = (uint8_t *)lib_msprintf("0 \"%s\" %s", contents->name, contents->id);
+    uint8_t *str = (uint8_t *)lib_msprintf("%d \"%s\" %s", contents->partition,
+                                           contents->name, contents->id);
 
     if (out_charset == IMAGE_CONTENTS_STRING_PETSCII) {
         return (char *)str;
@@ -214,6 +216,7 @@ char *image_contents_to_string(image_contents_t * contents, char out_charset)
 static char *image_contents_get_filename(image_contents_file_list_t * p)
 {
     int i;
+    /* WTF? */
     static char print_name[IMAGE_CONTENTS_FILE_NAME_LEN + 3] = { 0 };
     char encountered_a0 = 0;
 
@@ -258,7 +261,7 @@ char *image_contents_filename_to_string(image_contents_file_list_t * p,
     print_name = image_contents_get_filename(p);
 
     if (out_charset == IMAGE_CONTENTS_STRING_PETSCII) {
-        return lib_stralloc(print_name);
+        return lib_strdup(print_name);
     } else {
         return (char *)charset_petconv_stralloc((uint8_t *)print_name, out_charset);
     }
@@ -278,7 +281,7 @@ char *image_contents_filetype_to_string(image_contents_file_list_t *p,
                                         char out_charset)
 {
     if (out_charset == IMAGE_CONTENTS_STRING_PETSCII) {
-        return  lib_stralloc((const char *)(p->type));
+        return  lib_strdup((const char *)(p->type));
     } else {
         return (char *)charset_petconv_stralloc((p->type), out_charset);
     }
@@ -337,7 +340,7 @@ char *image_contents_filename_by_number(image_contents_t *contents,
             file_index--;
         }
         if (current != NULL) {
-            s = lib_stralloc((char *)(current->name));
+            s = lib_strdup((char *)(current->name));
         }
     }
     return s;

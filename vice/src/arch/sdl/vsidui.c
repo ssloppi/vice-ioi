@@ -389,7 +389,7 @@ int vsid_ui_init(void)
     uisid_menu_create();
 
     sdl_ui_set_main_menu(vsid_main_menu);
-    sdl_ui_vicii_font_init();
+    sdl_ui_font_init("chargen", 0, 0x800, 0);
 
     sdl_vsid_draw_init(draw_func);
     sdl_vsid_activate();
@@ -402,6 +402,7 @@ int vsid_ui_init(void)
 
     width = sdl_active_canvas->draw_buffer->draw_buffer_width;
     height = sdl_active_canvas->draw_buffer->draw_buffer_height;
+    /* FIXME: this line leaks: */
     sdl_active_canvas->draw_buffer_vsid = lib_calloc(1, sizeof(draw_buffer_t));
     sdl_active_canvas->draw_buffer_vsid->draw_buffer = lib_malloc(width * height);
 
@@ -467,16 +468,24 @@ void vsid_ui_display_nr_of_tunes(int count)
     sdl_vsid_tunes = count;
 }
 
-void vsid_ui_display_time(unsigned int sec)
-{
-    unsigned int h, m;
 
-    h = sec / 3600;
-    sec = sec - (h * 3600);
-    m = sec / 60;
-    sec = sec - (m * 60);
-    h = h % 100;
-    sprintf(vsidstrings[VSID_S_TIMER], "%02d:%02d:%02d", h, m, sec);
+/** \brief  Display run time
+ *
+ * \param[in]   dsec    run time in deciseconds
+ */
+void vsid_ui_display_time(unsigned int dsec)
+{
+    unsigned int f;
+    unsigned int h;
+    unsigned int m;
+    unsigned int s;
+
+    f = (dsec % 10) * 100;
+    s = (dsec / 10) % 60;
+    m = (dsec / 10 / 60) % 60;
+    h = dsec / 10 / 60 / 60;
+
+    sprintf(vsidstrings[VSID_S_TIMER], "%02u:%02u:%02u.%03u", h, m, s, f);
 
     if (sdl_vsid_state & SDL_VSID_ACTIVE) {
         sdl_vsid_state |= SDL_VSID_REPAINT;
@@ -546,5 +555,5 @@ void vsid_ui_close(void)
 {
     uikeyboard_menu_shutdown();
     uisid_menu_shutdown();
-    sdl_ui_vicii_font_shutdown();
+    sdl_ui_font_shutdown();
 }

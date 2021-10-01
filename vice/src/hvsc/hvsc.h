@@ -1,5 +1,3 @@
-/* vim: set et ts=4 sw=4 sts=4 fdm=marker syntax=c.doxygen: */
-
 /** \file   src/lib/hvsc.h
  * \brief   Library header
  *
@@ -14,7 +12,7 @@
 
 /*
  *  HVSClib - a library to work with High Voltage SID Collection files
- *  Copyright (C) 2018  Bas Wassink <b.wassink@ziggo.nl>
+ *  Copyright (C) 2018-2021  Bas Wassink <b.wassink@ziggo.nl>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -40,18 +38,18 @@
 
 /*
  * Microsoft's msvcrt does support C99's %z printf format specifier, so we
- * need to work around that:
+ * need to work around that.
+ *
+ * archdep_defs.h defines PRI_SIZE_T, but I want to keep this code independent
+ * from VICE code so it can be used in other projects.
  */
-#ifdef _WIN32
-# ifdef _WIN64
-#  define PRI_SIZE_T    PRIu64
+#ifndef PRI_SIZE_T
+# ifdef _WIN32
+#  define PRI_SIZE_T    "Iu"
 # else
-#  define PRI_SIZE_T    PRIu32
+#  define PRI_SIZE_T    "zu"
 # endif
-#else
-# define PRI_SIZE_T     "zu"
 #endif
-
 
 
 /** \brief  Error codes
@@ -101,11 +99,11 @@ typedef struct hvsc_text_file_s {
 /** \brief  STIL timestamp object
  *
  * Set `to` to -1 to signal only `from` should be used. Set `from` to -1 to
- * signal the entire timestamp is unused. Both entries are in seconds.
+ * signal the entire timestamp is unused. Both entries are in milliseconds.
  *
  * Examples: no timestamp would result in { -1, -1 }
- *           "(0:30)" would result in { 30, -1 }
- *           "(0:30-2:15)" would result in { 30, 135 }
+ *           "(0:30)" would result in { 300000, -1 }
+ *           "(0:30-2:15)" would result in { 30000, 135000 }
  */
 typedef struct hvsc_stil_timestamp_s {
     long from;  /**< 'from' timestamp, or only timestamp */

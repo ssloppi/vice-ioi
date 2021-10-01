@@ -100,18 +100,19 @@ static int magicdesk_dump(void)
 /* ---------------------------------------------------------------------*/
 
 static io_source_t magicdesk_device = {
-    CARTRIDGE_NAME_MAGIC_DESK,
-    IO_DETACH_CART,
-    NULL,
-    0xde00, 0xdeff, 0xff,
-    0,
-    magicdesk_io1_store,
-    NULL,
-    magicdesk_io1_peek,
-    magicdesk_dump,
-    CARTRIDGE_MAGIC_DESK,
-    0,
-    0
+    CARTRIDGE_NAME_MAGIC_DESK, /* name of the device */
+    IO_DETACH_CART,            /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,     /* does not use a resource for detach */
+    0xde00, 0xdeff, 0xff,      /* range for the device, address is ignored, reg:$de00, mirrors:$de01-$deff */
+    0,                         /* read is never valid, reg is write only */
+    magicdesk_io1_store,       /* store function */
+    NULL,                      /* NO poke function */
+    NULL,                      /* read function */
+    magicdesk_io1_peek,        /* peek function */
+    magicdesk_dump,            /* device state information dump function */
+    CARTRIDGE_MAGIC_DESK,      /* cartridge ID */
+    IO_PRIO_NORMAL,            /* normal priority, device read needs to be checked for collisions */
+    0                          /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *magicdesk_list_item = NULL;
@@ -124,14 +125,14 @@ static const export_resource_t export_res = {
 
 void magicdesk_config_init(void)
 {
-    cart_config_changed_slotmain(0, 0, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_8KGAME, CMODE_8KGAME, CMODE_READ);
     magicdesk_io1_store((uint16_t)0xde00, 0);
 }
 
 void magicdesk_config_setup(uint8_t *rawcart)
 {
     memcpy(roml_banks, rawcart, 0x2000 * MAXBANKS);
-    cart_config_changed_slotmain(0, 0, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_8KGAME, CMODE_8KGAME, CMODE_READ);
 }
 
 /* ---------------------------------------------------------------------*/

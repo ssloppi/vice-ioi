@@ -58,7 +58,7 @@ palette_t *palette_create(unsigned int num_entries, const char *entry_names[])
 
     if (entry_names != NULL) {
         for (i = 0; i < num_entries; i++) {
-            p->entries[i].name = lib_stralloc(entry_names[i]);
+            p->entries[i].name = lib_strdup(entry_names[i]);
         }
     }
 
@@ -156,10 +156,11 @@ static int palette_load_core(FILE *f, const char *file_name,
 
         for (i = 0; i < 4; i++) {
             long result;
-            const char *p2;
+            char *p2;
 
-            if (util_string_to_long(p1, &p2, 16, &result) < 0) {
-                log_error(palette_log, "%s, %d: number expected.",
+            result = strtol(p1, &p2, 16);
+            if (p1 == p2) {
+                log_error(palette_log, "%s, %u: number expected.",
                           file_name, line_num);
                 return -1;
             }
@@ -167,8 +168,8 @@ static int palette_load_core(FILE *f, const char *file_name,
                 || (i == 3 && result > 0xf)
                 || result > 0xff
                 || result < 0) {
-                log_error(palette_log, "%s, %d: invalid value %lx.",
-                          file_name, line_num, result);
+                log_error(palette_log, "%s, %u: invalid value %lx.",
+                          file_name, line_num, (unsigned long)result);
                 return -1;
             }
             values[i] = (uint8_t)result;
@@ -178,13 +179,13 @@ static int palette_load_core(FILE *f, const char *file_name,
         p1 = next_nonspace(p1);
         if (*p1 != '\0') {
             log_error(palette_log,
-                      "%s, %d: garbage at end of line.",
+                      "%s, %u: garbage at end of line.",
                       file_name, line_num);
             return -1;
         }
         if (entry_num >= palette_return->num_entries) {
             log_error(palette_log,
-                      "%s: too many entries, %d expected.", file_name,
+                      "%s: too many entries, %u expected.", file_name,
                       palette_return->num_entries);
             return -1;
         }
@@ -202,7 +203,7 @@ static int palette_load_core(FILE *f, const char *file_name,
     }
 
     if (entry_num < palette_return->num_entries) {
-        log_error(palette_log, "%s: too few entries, %d found, %d expected.",
+        log_error(palette_log, "%s: too few entries, %u found, %u expected.",
                   file_name, entry_num, palette_return->num_entries);
         return -1;
     }
@@ -215,7 +216,7 @@ static int palette_load_core(FILE *f, const char *file_name,
     return 0;
 }
 
-int palette_load(const char *file_name, palette_t *palette_return)
+int palette_load(const char *file_name, const char *subpath, palette_t *palette_return)
 {
     palette_t *tmp_palette;
     char *complete_path;
@@ -226,14 +227,14 @@ int palette_load(const char *file_name, palette_t *palette_return)
         return 0;
     }
 
-    f = sysfile_open(file_name, &complete_path, MODE_READ_TEXT);
+    f = sysfile_open(file_name, subpath, &complete_path, MODE_READ_TEXT);
 
     if (f == NULL) {
         /* Try to add the extension.  */
-        char *tmp = lib_stralloc(file_name);
+        char *tmp = lib_strdup(file_name);
 
         util_add_extension(&tmp, "vpl");
-        f = sysfile_open(tmp, &complete_path, MODE_READ_TEXT);
+        f = sysfile_open(tmp, subpath, &complete_path, MODE_READ_TEXT);
         lib_free(tmp);
 
         if (f == NULL) {
@@ -290,7 +291,7 @@ int palette_save(const char *file_name, const palette_t *palette)
        - existing .vpl files must be extended to contain CHIP and NAME info
        - when generating the list, sort by NAME
  */
-static palette_info_t palettelist[] = {
+static const palette_info_t palettelist[] = {
     /* data/C64/ */
     /* data/C128/ */
     /* data/CBM-II/ */
@@ -300,7 +301,6 @@ static palette_info_t palettelist[] = {
     { "VICII", "Pepto (NTSC, Sony)", "pepto-ntsc-sony"},
     { "VICII", "Pepto (NTSC)",       "pepto-ntsc"},
     { "VICII", "Colodore (PAL)",     "colodore"},
-    { "VICII", "ChristopherJam",     "cjam"},
     { "VICII", "VICE",               "vice"},
     { "VICII", "C64HQ",              "c64hq"},
     { "VICII", "C64S",               "c64s"},
@@ -309,9 +309,12 @@ static palette_info_t palettelist[] = {
     { "VICII", "Godot",              "godot"},
     { "VICII", "PC64",               "pc64"},
     { "VICII", "RGB",                "rgb"},
+    { "VICII", "ChristopherJam",     "cjam"},
     { "VICII", "Deekay",             "deekay"},
+    { "VICII", "PALette",            "palette"},
     { "VICII", "Ptoing",             "ptoing"},
     { "VICII", "Community Colors",   "community-colors"},
+    { "VICII", "Pixcen",             "pixcen"},
     /* data/C128/ */
     { "VDC",   "RGB",                "vdc_deft"}, /* default */
     { "VDC",   "Composite",          "vdc_comp"},
@@ -333,13 +336,13 @@ static palette_info_t palettelist[] = {
     { NULL, 0, 0 }
 };
 
-static palette_info_t palettelist_dtv[] = {
+static const palette_info_t palettelist_dtv[] = {
     /* data/C64dtv/ */
     { "VICII","Spiff", "spiff"}, /* default */
     { NULL, 0, 0 }
 };
 
-palette_info_t *palette_get_info_list(void)
+const palette_info_t *palette_get_info_list(void)
 {
     /* special case handling is needed to distinguish from regular VICII */
     if (machine_class == VICE_MACHINE_C64DTV) {

@@ -30,6 +30,7 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
+
 /** \brief  Object to construct a GtkFileFilter with
  */
 typedef struct ui_file_filter_s {
@@ -38,11 +39,12 @@ typedef struct ui_file_filter_s {
 } ui_file_filter_t;
 
 
-/* these need extern, so now I'm wondering if this the correct approach
- * perhaps some 'getters' would be better, avoiding problems -- compyx */
+/* These need extern, so now I'm wondering if this is the correct approach.
+ * Perhaps some 'getters' would be better, avoiding problems -- compyx */
 extern const char *file_chooser_pattern_all[];
 extern const char *file_chooser_pattern_cart[];
 extern const char *file_chooser_pattern_disk[];
+extern const char *file_chooser_pattern_floppy[];
 extern const char *file_chooser_pattern_tape[];
 extern const char *file_chooser_pattern_sid[];
 extern const char *file_chooser_pattern_fliplist[];
@@ -64,5 +66,8 @@ extern const ui_file_filter_t file_chooser_filter_snapshot;
 
 GtkFileFilter *create_file_chooser_filter(const ui_file_filter_t filter,
                                           gboolean show_globs);
+
+gchar *file_chooser_convert_to_locale(const gchar *text);
+gchar *file_chooser_convert_from_locale(const gchar *text);
 
 #endif

@@ -2,12 +2,15 @@
  * \brief   Widget to control Expert Cartridge resources
  *
  * \author  Bas Wassink <b.wassink@ziggo.nl>
- *
+ */
+
+/*
  * Controls the following resource(s):
- *  ExpertCartridgeEnabled  (x64/x64sc/xscpu64/x128)
- *  ExpertCartridgeMode     (x64/x64sc/xscpu64/x128)
- *  Expertfilename          (x64/x64sc/xscpu64/x128)
- *  ExpertImageWrite        (x64/x64sc/xscpu64/x128)
+ *
+ * $VICERES     ExpertCartridgeEnabled  x64 x64sc xscpu64 x128
+ * $VICERES     ExpertCartridgeMode     x64 x64sc xscpu64 x128
+ * $VICERES     Expertfilename          x64 x64sc xscpu64 x128
+ * $VICERES     ExpertImageWrite        x64 x64sc xscpu64 x128
  */
 
 /*
@@ -32,19 +35,15 @@
  */
 
 #include "vice.h"
+
 #include <gtk/gtk.h>
 
-#include "machine.h"
-#include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "basedialogs.h"
-#include "cartimagewidget.h"
-#include "openfiledialog.h"
-#include "savefiledialog.h"
+#include "vice_gtk3.h"
 #include "cartridge.h"
-#include "carthelpers.h"
+#include "machine.h"
+#include "openfiledialog.h"
+#include "resources.h"
+#include "savefiledialog.h"
 
 #include "expertwidget.h"
 
@@ -52,10 +51,10 @@
 /** \brief  List of 'modes' for the Expert Cartridge
  */
 static const vice_gtk3_radiogroup_entry_t mode_list[] = {
-    { "Off", 0 },
-    { "Programmable", 1 },
-    { "On", 2 },
-    { NULL, -1 }
+    { "Off",            0 },
+    { "Programmable",   1 },
+    { "On",             2 },
+    { NULL,             -1 }
 };
 
 
@@ -68,8 +67,7 @@ static GtkWidget *create_expert_mode_widget(void)
     GtkWidget *grid;
     GtkWidget *radio_group;
 
-    grid = uihelpers_create_grid_with_label("Cartridge mode", 3);
-
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Cartridge mode", 3);
     radio_group = vice_gtk3_resource_radiogroup_new("ExpertCartridgeMode",
             mode_list, GTK_ORIENTATION_HORIZONTAL);
     g_object_set(radio_group, "margin-left", 16, NULL);
@@ -84,18 +82,20 @@ static GtkWidget *create_expert_mode_widget(void)
  *
  * \return  GtkGrid
  */
-static GtkWidget *create_expert_image_widget(GtkWidget *parent)
+static GtkWidget *create_expert_image_widget(void)
 {
-    return cart_image_widget_create(parent, "Expert Cartridge image",
+    return cart_image_widget_create(
+            NULL, "Expert Cartridge image",
             "Expertfilename", "ExpertImageWrite",
             carthelpers_save_func, carthelpers_flush_func,
+            carthelpers_can_save_func, carthelpers_can_flush_func,
             CARTRIDGE_NAME_EXPERT, CARTRIDGE_EXPERT);
 }
 
 
 /** \brief  Create widget to control Expert Cartridge resources
  *
- * \param[in]   parent  parent widget, used for dialogs
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -106,10 +106,7 @@ GtkWidget *expert_widget_create(GtkWidget *parent)
     GtkWidget *expert_image;
     GtkWidget *expert_mode;
 
-
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 8);
 
     expert_enable_widget = carthelpers_create_enable_check_button(
             CARTRIDGE_NAME_EXPERT, CARTRIDGE_EXPERT);
@@ -118,7 +115,7 @@ GtkWidget *expert_widget_create(GtkWidget *parent)
     expert_mode = create_expert_mode_widget();
     gtk_grid_attach(GTK_GRID(grid), expert_mode, 0, 1, 1, 1);
 
-    expert_image = create_expert_image_widget(parent);
+    expert_image = create_expert_image_widget();
     gtk_grid_attach(GTK_GRID(grid), expert_image, 0, 2, 1, 1);
 
     gtk_widget_show_all(grid);

@@ -35,7 +35,6 @@
 #include "videoarch.h"
 
 #include "alarm.h"
-#include "clkguard.h"
 #include "dma.h"
 #include "lib.h"
 #include "log.h"
@@ -79,15 +78,6 @@ CLOCK first_write_cycle;
 static void ted_set_geometry(void);
 
 
-static void clk_overflow_callback(CLOCK sub, void *unused_data)
-{
-    ted.raster_irq_clk -= sub;
-    ted.last_emulate_line_clk -= sub;
-    ted.fetch_clk -= sub;
-    ted.draw_clk -= sub;
-    old_maincpu_clk -= sub;
-}
-
 void ted_change_timing(machine_timing_t *machine_timing, int bordermode)
 {
     ted_timing_set(machine_timing, bordermode);
@@ -96,6 +86,8 @@ void ted_change_timing(machine_timing_t *machine_timing, int bordermode)
         ted_set_geometry();
         raster_mode_change();
     }
+    /* this should go to ted_chip_model_init() incase we ever go that far */
+    ted_color_update_palette(ted.raster.canvas);
 }
 
 void ted_delay_oldclk(CLOCK num)
@@ -179,7 +171,7 @@ fastloop:
     return;
 }
 
-inline void ted_handle_pending_alarms(int num_write_cycles)
+inline void ted_handle_pending_alarms(CLOCK num_write_cycles)
 {
     if (num_write_cycles != 0) {
         int f;
@@ -380,8 +372,6 @@ raster_t *ted_init(void)
 
     ted.initialized = 1;
 
-    clk_guard_add_callback(maincpu_clk_guard, clk_overflow_callback, NULL);
-
     return &ted.raster;
 }
 
@@ -548,7 +538,7 @@ void ted_update_memory_ptrs(unsigned int cycle)
         }
     }
 
-    if (ted.raster.skip_frame || (tmp <= 0 && maincpu_clk < ted.draw_clk)) {
+    if (tmp <= 0 && maincpu_clk < ted.draw_clk) {
         old_screen_ptr = ted.screen_ptr = screen_base;
         old_bitmap_ptr = ted.bitmap_ptr = bitmap_base;
         old_chargen_ptr = ted.chargen_ptr = char_base;
@@ -721,7 +711,7 @@ void ted_raster_draw_alarm_handler(CLOCK offset, void *data)
     if (ted.tv_current_line < ted.screen_height) {
         raster_line_emulate(&ted.raster);
     } else {
-        log_debug("Skip line %d %d", ted.tv_current_line, ted.screen_height);
+        log_debug("Skip line %u %u", ted.tv_current_line, ted.screen_height);
     }
 
     if (ted.ted_raster_counter == ted.last_dma_line) {
@@ -767,6 +757,8 @@ void ted_raster_draw_alarm_handler(CLOCK offset, void *data)
         }
     }
 
+    vsync_do_end_of_line();
+
     /* DO VSYNC if the raster_counter in the TED reached the VSYNC signal */
     /* Also do VSYNC if oversized screen reached a certain threashold, this will result in rolling screen just like on the real thing */
     if (((signed int)(ted.tv_current_line - ted.screen_height) > 40) || (ted.ted_raster_counter == ted.vsync_line )) {
@@ -777,9 +769,8 @@ void ted_raster_draw_alarm_handler(CLOCK offset, void *data)
 
         /*log_debug("Vsync %d %d",ted.tv_current_line, ted.ted_raster_counter);*/
 
-        raster_skip_frame(&ted.raster,
-                          vsync_do_vsync(ted.raster.canvas,
-                                         ted.raster.skip_frame));
+        vsync_do_vsync(ted.raster.canvas);
+                      
         ted.tv_current_line = 0;
 
         /* FIXME increment at appropriate cycle */

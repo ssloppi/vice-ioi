@@ -89,6 +89,31 @@ vice/src/monitor/mon_lex.c
 vice/src/monitor/mon_parse.c
 vice/src/monitor/mon_parse.h
 vice/src/stamp-h1
+vice/src/version.h
+vice/src/vice-version.sh
+
+# Build files - data/common
+vice/data/common/vice.gresource
+vice/data/common/vsid.ico
+vice/data/common/vsid.res
+vice/data/common/x128.ico
+vice/data/common/x128.res
+vice/data/common/x64dtv.ico
+vice/data/common/x64dtv.res
+vice/data/common/x64sc.ico
+vice/data/common/x64sc.res
+vice/data/common/xcbm2.ico
+vice/data/common/xcbm2.res
+vice/data/common/xcbm5x0.ico
+vice/data/common/xcbm5x0.res
+vice/data/common/xpet.ico
+vice/data/common/xpet.res
+vice/data/common/xplus4.ico
+vice/data/common/xplus4.res
+vice/data/common/xscpu64.ico
+vice/data/common/xscpu64.res
+vice/data/common/xvic.ico
+vice/data/common/xvic.res
 
 # Build files - doc / man
 vice/doc/**/Makefile*
@@ -122,3 +147,4 @@ vice/src/arch/gtk3/novte/marshal.cc
 vice/src/arch/gtk3/novte/marshal.h
 vice/src/arch/gtk3/novte/vtetypebuiltins.cc
 vice/src/arch/gtk3/novte/vtetypebuiltins.h
+vice/src/arch/android/AnVICE/AndroidManifest.xml

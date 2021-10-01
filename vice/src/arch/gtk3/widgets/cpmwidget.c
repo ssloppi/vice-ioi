@@ -32,17 +32,18 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
+#include "basewidgets.h"
+#include "debug_gtk3.h"
 #include "machine.h"
 #include "resources.h"
-#include "debug_gtk3.h"
 #include "widgethelpers.h"
-#include "basewidgets.h"
 
 #include "cpmwidget.h"
 
+
 /** \brief  Create widget to control Super Snapshot v5 resources
  *
- * \param[in]   parent  parent widget, used for dialogs
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */

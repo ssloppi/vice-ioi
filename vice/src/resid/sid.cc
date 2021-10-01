@@ -31,8 +31,24 @@
 #define round(x) (x>=0.0?floor(x+0.5):ceil(x-0.5))
 #endif
 
+#include <iostream>
+#include <fstream>
+using namespace std;
+
 namespace reSID
 {
+
+inline short clip(int input)
+{
+    // Saturated arithmetics to guard against 16 bit sample overflow.
+    if (unlikely(input > 32767)) {
+      return 32767;
+    }
+    if (unlikely(input < -32768)) {
+      return -32768;
+    }
+    return (short)input;
+}
 
 // ----------------------------------------------------------------------------
 // Constructor.
@@ -391,10 +407,18 @@ SID::State SID::read_state()
 void SID::write_state(const State& state)
 {
   int i;
+  sampling_method tmp;
 
+  /* HACK: remember sampling mode and set it to resampling incase it was fast,
+           else the write() call will not work correctly */
+  tmp = sampling;
+  if (unlikely(sampling == SAMPLE_FAST) && (sid_model == MOS8580)) {
+    sampling = SAMPLE_RESAMPLE;
+  }
   for (i = 0; i <= 0x18; i++) {
     write(i, state.sid_register[i]);
   }
+  sampling = tmp;   /* restore original mode */
 
   bus_value = state.bus_value;
   bus_value_ttl = state.bus_value_ttl;
@@ -461,6 +485,43 @@ void SID::enable_external_filter(bool enable)
   extfilt.enable_filter(enable);
 }
 
+// ----------------------------------------------------------------------------
+// write raw output to a file
+// ----------------------------------------------------------------------------
+void SID::debugoutput(void)
+{
+    static int recording = -1;
+    static ofstream myFile;
+    static int lastn;
+    int n = filter.output();
+    if (recording == -1) {
+        /* the first call opens the file */
+        recording = 0;
+        myFile.open ("resid.raw", ios::out | ios::binary);
+        lastn = n;
+        std::cout << "reSID: waiting for output to change..." << std::endl;
+    } else if ((recording == 0) && (lastn != n)) {
+        /* start recording when the reSID output changes */
+        recording = 1;
+        std::cout << "reSID: starting recording..." << std::endl;
+    }
+    /* write 16bit little endian signed data */
+    if (recording) {
+        myFile.put(n & 0xff);
+        myFile.put((n >> 8) & 0xff);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Enable raw debug output
+// ----------------------------------------------------------------------------
+void SID::enable_raw_debug_output(bool enable)
+{
+    raw_debug_output = enable;
+    if (enable) {
+        std::cout << "reSID: raw output enabled." << std::endl;
+    }
+}
 
 // ----------------------------------------------------------------------------
 // I0() computes the 0th order modified Bessel function of the first kind.
@@ -910,7 +971,7 @@ int SID::clock_resample(cycle_count& delta_t, short* buf, int n, int interleave)
 
     for (int i = 0; i < delta_t_sample; i++) {
       clock();
-      sample[sample_index] = sample[sample_index + RINGSIZE] = output();
+      sample[sample_index] = sample[sample_index + RINGSIZE] = clip(output());
       ++sample_index &= RINGMASK;
     }
 
@@ -953,16 +1014,7 @@ int SID::clock_resample(cycle_count& delta_t, short* buf, int n, int interleave)
 
     v >>= FIR_SHIFT;
 
-    // Saturated arithmetics to guard against 16 bit sample overflow.
-    const int half = 1 << 15;
-    if (v >= half) {
-      v = half - 1;
-    }
-    else if (v < -half) {
-      v = -half;
-    }
-
-    buf[s*interleave] = v;
+    buf[s*interleave] = clip(v);
   }
 
   return s;
@@ -1009,16 +1061,7 @@ int SID::clock_resample_fastmem(cycle_count& delta_t, short* buf, int n, int int
 
     v >>= FIR_SHIFT;
 
-    // Saturated arithmetics to guard against 16 bit sample overflow.
-    const int half = 1 << 15;
-    if (v >= half) {
-      v = half - 1;
-    }
-    else if (v < -half) {
-      v = -half;
-    }
-
-    buf[s*interleave] = v;
+    buf[s*interleave] = clip(v);
   }
 
   return s;

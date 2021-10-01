@@ -36,6 +36,7 @@
 #include "c64rom.h"
 #include "c64memrom.h"
 #include "c64mem.h"
+#include "c64model.h"
 #include "cartio.h"
 #include "cartridge.h"
 #include "cia.h"
@@ -73,7 +74,7 @@ int kernal_revision = C64_KERNAL_REV3;
 int cia1_model;
 int cia2_model;
 
-static int board_type = 0;
+static int board_type = BOARD_C64;
 static int iec_reset = 0;
 
 static int set_chargen_rom_name(const char *val, void *param)
@@ -178,18 +179,44 @@ static int set_cia2_model(int val, void *param)
     return 0;
 }
 
+#define NUM_TRAP_DEVICES 9  /* FIXME: is there a better constant ? */
+static int trapfl[NUM_TRAP_DEVICES];
+static int trapdevices[NUM_TRAP_DEVICES + 1] = { 1, 4, 5, 6, 7, 8, 9, 10, 11, -1 };
+
+static void get_trapflags(void)
+{
+    int i;
+    for(i = 0; trapdevices[i] != -1; i++) {
+        resources_get_int_sprintf("VirtualDevice%d", &trapfl[i], trapdevices[i]);
+    }
+}
+
+static void clear_trapflags(void)
+{
+    int i;
+    for(i = 0; trapdevices[i] != -1; i++) {
+        resources_set_int_sprintf("VirtualDevice%d", 0, trapdevices[i]);
+    }
+}
+
+static void restore_trapflags(void)
+{
+    int i;
+    for(i = 0; trapdevices[i] != -1; i++) {
+        resources_set_int_sprintf("VirtualDevice%d", trapfl[i], trapdevices[i]);
+    }
+}
+
 static int set_kernal_revision(int val, void *param)
 {
-    int trapfl;
-
-    log_verbose("set_kernal_revision val:%d kernal_revision: %d", val, kernal_revision);
+    log_verbose("set_kernal_revision (\"KernalRev\") val:%d kernal_revision: %d", val, kernal_revision);
     if(!c64rom_isloaded()) {
         return 0;
     }
     /* disable device traps before kernal patching */
     if (machine_class != VICE_MACHINE_VSID) {
-        resources_get_int("VirtualDevices", &trapfl);
-        resources_set_int("VirtualDevices", 0);
+        get_trapflags();
+        clear_trapflags();
     }
     /* patch kernal to given revision */
     if ((val != -1) && (patch_rom_idx(val) < 0)) {
@@ -201,10 +228,10 @@ static int set_kernal_revision(int val, void *param)
     }
     /* restore traps */
     if (machine_class != VICE_MACHINE_VSID) {
-        resources_set_int("VirtualDevices", trapfl);
+        restore_trapflags();
     }
     kernal_revision = val;
-    log_verbose("set_kernal_revision new kernal_revision: %d", kernal_revision);
+    log_verbose("set_kernal_revision (\"KernalRev\") new kernal_revision: %d", kernal_revision);
     return 0;
 }
 
@@ -218,31 +245,17 @@ static int set_sync_factor(int val, void *param)
 
     switch (val) {
         case MACHINE_SYNC_PAL:
-            sync_factor = val;
-            if (change_timing) {
-                machine_change_timing(MACHINE_SYNC_PAL, vicii_resources.border_mode);
-            }
-            break;
         case MACHINE_SYNC_NTSC:
-            sync_factor = val;
-            if (change_timing) {
-                machine_change_timing(MACHINE_SYNC_NTSC, vicii_resources.border_mode);
-            }
-            break;
         case MACHINE_SYNC_NTSCOLD:
-            sync_factor = val;
-            if (change_timing) {
-                machine_change_timing(MACHINE_SYNC_NTSCOLD, vicii_resources.border_mode);
-            }
-            break;
         case MACHINE_SYNC_PALN:
-            sync_factor = val;
-            if (change_timing) {
-                machine_change_timing(MACHINE_SYNC_PALN, vicii_resources.border_mode);
-            }
             break;
         default:
             return -1;
+    }
+    sync_factor = val;
+    if (change_timing) {
+        vicii_comply_with_video_standard(val);
+        machine_change_timing(val, vicii_resources.border_mode);
     }
 
     return 0;
@@ -264,7 +277,7 @@ static const resource_string_t resources_string[] = {
 static const resource_int_t resources_int[] = {
     { "MachineVideoStandard", MACHINE_SYNC_PAL, RES_EVENT_SAME, NULL,
       &sync_factor, set_sync_factor, NULL },
-    { "BoardType", 0, RES_EVENT_SAME, NULL,
+    { "BoardType", BOARD_C64, RES_EVENT_SAME, NULL,
       &board_type, set_board_type, NULL },
     { "IECReset", 0, RES_EVENT_SAME, NULL,
       &iec_reset, set_iec_reset, NULL },
@@ -274,12 +287,20 @@ static const resource_int_t resources_int[] = {
       &cia2_model, set_cia2_model, NULL },
     { "KernalRev", C64_KERNAL_REV3, RES_EVENT_SAME, NULL,
       &kernal_revision, set_kernal_revision, NULL },
-    { "SidStereoAddressStart", 0xde00, RES_EVENT_SAME, NULL,
-      (int *)&sid_stereo_address_start, sid_set_sid_stereo_address, NULL },
-    { "SidTripleAddressStart", 0xdf00, RES_EVENT_SAME, NULL,
-      (int *)&sid_triple_address_start, sid_set_sid_triple_address, NULL },
-    { "SidQuadAddressStart", 0xdf80, RES_EVENT_SAME, NULL,
-      (int *)&sid_quad_address_start, sid_set_sid_quad_address, NULL },
+    { "Sid2AddressStart", 0xde00, RES_EVENT_SAME, NULL,
+      (int *)&sid2_address_start, sid_set_sid2_address, NULL },
+    { "Sid3AddressStart", 0xdf00, RES_EVENT_SAME, NULL,
+      (int *)&sid3_address_start, sid_set_sid3_address, NULL },
+    { "Sid4AddressStart", 0xdf80, RES_EVENT_SAME, NULL,
+      (int *)&sid4_address_start, sid_set_sid4_address, NULL },
+    { "Sid5AddressStart", 0xde80, RES_EVENT_SAME, NULL,
+      (int *)&sid5_address_start, sid_set_sid5_address, NULL },
+    { "Sid6AddressStart", 0xdf40, RES_EVENT_SAME, NULL,
+      (int *)&sid6_address_start, sid_set_sid6_address, NULL },
+    { "Sid7AddressStart", 0xde40, RES_EVENT_SAME, NULL,
+      (int *)&sid7_address_start, sid_set_sid7_address, NULL },
+    { "Sid8AddressStart", 0xdfc0, RES_EVENT_SAME, NULL,
+      (int *)&sid8_address_start, sid_set_sid8_address, NULL },
     { "BurstMod", BURST_MOD_NONE, RES_EVENT_NO, NULL,
       &burst_mod, set_burst_mod, NULL },
     RESOURCE_INT_LIST_END

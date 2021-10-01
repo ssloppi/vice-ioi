@@ -48,6 +48,7 @@
 #include "mos6510.h"
 #include "network.h"
 #include "resources.h"
+#include "tick.h"
 #include "types.h"
 #include "uiapi.h"
 #include "util.h"
@@ -380,7 +381,7 @@ static int network_send_buffer(vice_network_socket_t * s, const uint8_t *buf, in
 #define NUM_OF_TESTPACKETS 50
 
 typedef struct {
-    unsigned long t;
+    tick_t t;
     unsigned char buf[0x60];
 } testpacket;
 
@@ -391,10 +392,8 @@ static void network_test_delay(void)
     unsigned char *buf;
     testpacket pkt;
 
-    long packet_delay[NUM_OF_TESTPACKETS];
+    tick_t packet_delay[NUM_OF_TESTPACKETS];
     char st[256];
-
-    vsyncarch_init();
 
     ui_display_statustext("Testing best frame delay...", 0);
 
@@ -402,18 +401,18 @@ static void network_test_delay(void)
 
     if (network_mode == NETWORK_SERVER_CONNECTED) {
         for (i = 0; i < NUM_OF_TESTPACKETS; i++) {
-            pkt.t = vsyncarch_gettime();
+            pkt.t = tick_now();
             if (network_send_buffer(network_socket, buf, sizeof(testpacket)) < 0
                 || network_recv_buffer(network_socket, buf, sizeof(testpacket)) < 0) {
                 return;
             }
-            packet_delay[i] = vsyncarch_gettime() - pkt.t;
+            packet_delay[i] = tick_now_delta(pkt.t);
         }
         /* Sort the packets delays*/
         for (i = 0; i < NUM_OF_TESTPACKETS - 1; i++) {
             for (j = i + 1; j < NUM_OF_TESTPACKETS; j++) {
                 if (packet_delay[i] < packet_delay[j]) {
-                    long d = packet_delay[i];
+                    tick_t d = packet_delay[i];
                     packet_delay[i] = packet_delay[j];
                     packet_delay[j] = d;
                 }
@@ -423,13 +422,13 @@ static void network_test_delay(void)
 #endif
         }
 #ifdef NETWORK_DEBUG
-        log_debug("vsyncarch_frequency = %ld", vsyncarch_frequency());
+        log_debug("tick_per_second = %ld", tick_per_second());
 #endif
         /* calculate delay with 90% of packets beeing fast enough */
         /* FIXME: This needs some further investigation */
         new_frame_delta = 5 + (uint8_t)(vsync_get_refresh_frequency()
                                      * packet_delay[(int)(0.1 * NUM_OF_TESTPACKETS)]
-                                     / (float)vsyncarch_frequency());
+                                     / (float)tick_per_second());
         network_send_buffer(network_socket, &new_frame_delta,
                             sizeof(new_frame_delta));
     } else {
@@ -461,6 +460,7 @@ static void network_server_connect_trap(uint16_t addr, void *data)
     event_list_state_t settings_list;
 
     vsync_suspend_speed_eval();
+    sound_suspend();
 
     /* Create snapshot and send it */
     snapshotfilename = archdep_tmpnam();
@@ -522,6 +522,9 @@ static void network_client_connect_trap(uint16_t addr, void *data)
     uint8_t recv_buf4[4];
     event_list_state_t *settings_list;
 
+    vsync_suspend_speed_eval();
+    sound_suspend();
+
     /* Set proper settings */
     if (resources_set_event_safe() < 0) {
         ui_error("Warning! Failed to set netplay-safe settings.");
@@ -568,7 +571,7 @@ static void network_client_connect_trap(uint16_t addr, void *data)
 void network_event_record(unsigned int type, void *data, unsigned int size)
 {
     unsigned int control = 0;
-    uint8_t joyport;
+    uint16_t joyport;
 
     switch (type) {
         case EVENT_KEYBOARD_MATRIX:
@@ -587,7 +590,7 @@ void network_event_record(unsigned int type, void *data, unsigned int size)
             control = NETWORK_CONTROL_RSRC;
             break;
         case EVENT_JOYSTICK_VALUE:
-            joyport = ((uint8_t *)data)[0];
+            joyport = ((uint16_t *)data)[0];
             if (joyport == 1) {
                 control = NETWORK_CONTROL_JOY1;
             }
@@ -612,6 +615,9 @@ void network_event_record(unsigned int type, void *data, unsigned int size)
 
 void network_attach_image(unsigned int unit, const char *filename)
 {
+    /* TODO: drive 1? */
+    unsigned int drive = 0;
+
     unsigned int control = NETWORK_CONTROL_DEVC;
 
     if (network_get_mode() == NETWORK_CLIENT) {
@@ -622,7 +628,7 @@ void network_attach_image(unsigned int unit, const char *filename)
         return;
     }
 
-    event_record_attach_in_list(&(frame_event_list[current_frame]), unit, filename, 1);
+    event_record_attach_in_list(&(frame_event_list[current_frame]), unit, drive, filename, 1);
 }
 
 int network_get_mode(void)
@@ -668,6 +674,8 @@ int network_start_server(void)
         network_mode = NETWORK_SERVER;
 
         vsync_suspend_speed_eval();
+        sound_suspend();
+        
         ui_display_statustext("Server is waiting for a client...", 1);
 
         ret = 0;
@@ -786,7 +794,7 @@ static void network_hook_connected_send(void)
     send_len = network_create_event_buffer(&local_event_buf, &(frame_event_list[current_frame]));
 
 #ifdef NETWORK_DEBUG
-    t1 = vsyncarch_gettime();
+    t1 = tick_now();
 #endif
 
     util_int_to_le_buf4(send_len4, (int)send_len);
@@ -796,7 +804,7 @@ static void network_hook_connected_send(void)
         network_disconnect();
     }
 #ifdef NETWORK_DEBUG
-    t2 = vsyncarch_gettime();
+    t2 = tick_now_after(t1);
 #endif
 
     lib_free(local_event_buf);
@@ -846,7 +854,7 @@ static void network_hook_connected_receive(void)
         }
 
 #ifdef NETWORK_DEBUG
-        t3 = vsyncarch_gettime();
+        t3 = tick_now_after(t2);
 #endif
 
         remote_event_list = network_create_event_list(remote_event_buf);
@@ -885,7 +893,7 @@ static void network_hook_connected_receive(void)
     }
     network_prepare_next_frame();
 #ifdef NETWORK_DEBUG
-    t4 = vsyncarch_gettime();
+    t4 = tick_now_after(t3);
 #endif
 }
 

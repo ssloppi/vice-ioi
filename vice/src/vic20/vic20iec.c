@@ -40,31 +40,34 @@
 #include "types.h"
 #include "via.h"
 #include "vic20iec.h"
+#include "drive/iec/cmdhd.h"
 
+/* FIXME: this code should be a wrapper to the functions in src/iecbus/iecbus.c
+          and not implement the IEC stuff right here - this is needed to make the
+          "IECDevice" implementation work in xvic as well */
 
 #define NOT(x) ((x) ^ 1)
 
 
 static uint8_t cpu_data, cpu_clock, cpu_atn;
-static uint8_t drive_data[DRIVE_NUM], drive_clock[DRIVE_NUM];
-static uint8_t drive_atna[DRIVE_NUM], drive_data_modifier[DRIVE_NUM];
+static uint8_t drive_data[NUM_DISK_UNITS], drive_clock[NUM_DISK_UNITS];
+static uint8_t drive_atna[NUM_DISK_UNITS], drive_data_modifier[NUM_DISK_UNITS];
 static uint8_t bus_data, bus_clock, bus_atn;
 static uint8_t cpu_bus_val;
 
 static inline void resolve_bus_signals(void)
 {
-    drive_t *drive;
     unsigned int i;
 
     bus_atn = NOT(cpu_atn);
     bus_clock = NOT(cpu_clock);
     bus_data = NOT(cpu_data);
 
-    for (i = 0; i < DRIVE_NUM; i++) {
-        drive = drive_context[i]->drive;
+    for (i = 0; i < NUM_DISK_UNITS; i++) {
+        diskunit_context_t *unit = diskunit_context[i];
 
-        bus_clock &= drive->enable ? NOT(drive_clock[i]) : 0x01;
-        bus_data &= drive->enable ? NOT(drive_data[i])
+        bus_clock &= unit->enable ? NOT(drive_clock[i]) : 0x01;
+        bus_data &= unit->enable ? NOT(drive_data[i])
                     & NOT(drive_data_modifier[i]) : 0x01;
     }
 }
@@ -89,12 +92,14 @@ void iec_update_ports_embedded(void)
     iec_update_ports();
 }
 
+/* NOTE: when adding drives, do the equivalent change in src/iecbus/iecbus.c */
 static void iec_calculate_data_modifier(unsigned int dnr)
 {
-    switch (drive_context[dnr]->drive->type) {
+    switch (diskunit_context[dnr]->type) {
         case DRIVE_TYPE_1581:
         case DRIVE_TYPE_2000:
         case DRIVE_TYPE_4000:
+        case DRIVE_TYPE_CMDHD:
             drive_data_modifier[dnr] = (cpu_atn & drive_atna[dnr]);
             break;
         default:
@@ -144,29 +149,32 @@ uint8_t iec_pa_read(void)
     return cpu_bus_val;
 }
 
+/* NOTE: when adding drives, do the equivalent change in src/iecbus/iecbus.c */
 void iec_pa_write(uint8_t data)
 {
-    drive_t *drive;
     unsigned int i;
 
     drive_cpu_execute_all(maincpu_clk);
 
     /* Signal ATN interrupt to the drives.  */
     if ((cpu_atn == 0) && (data & 128)) {
-        for (i = 0; i < DRIVE_NUM; i++) {
-            drive = drive_context[i]->drive;
+        for (i = 0; i < NUM_DISK_UNITS; i++) {
+            diskunit_context_t *unit = diskunit_context[i];
 
-            if (drive->enable) {
-                switch (drive->type) {
+            if (unit->enable) {
+                switch (unit->type) {
                     case DRIVE_TYPE_1581:
-                        ciacore_set_flag(drive_context[i]->cia1581);
+                        ciacore_set_flag(unit->cia1581);
                         break;
                     case DRIVE_TYPE_2000:
                     case DRIVE_TYPE_4000:
-                        viacore_signal(drive_context[i]->via4000, VIA_SIG_CA2, VIA_SIG_RISE);
+                        viacore_signal(unit->via4000, VIA_SIG_CA2, VIA_SIG_RISE);
+                        break;
+                    case DRIVE_TYPE_CMDHD:
+                        viacore_signal(unit->cmdhd->via10, VIA_SIG_CA1, VIA_SIG_FALL);
                         break;
                     default:
-                        viacore_signal(drive_context[i]->via1d1541, VIA_SIG_CA1, VIA_SIG_RISE);
+                        viacore_signal(unit->via1d1541, VIA_SIG_CA1, VIA_SIG_RISE);
                 }
             }
         }
@@ -174,19 +182,22 @@ void iec_pa_write(uint8_t data)
 
     /* Release ATN signal.  */
     if (!(data & 128)) {
-        for (i = 0; i < DRIVE_NUM; i++) {
-            drive = drive_context[i]->drive;
+        for (i = 0; i < NUM_DISK_UNITS; i++) {
+            diskunit_context_t *unit = diskunit_context[i];
 
-            if (drive->enable) {
-                switch (drive->type) {
+            if (unit->enable) {
+                switch (unit->type) {
                     case DRIVE_TYPE_1581:
                         break;
                     case DRIVE_TYPE_2000:
                     case DRIVE_TYPE_4000:
-                        viacore_signal(drive_context[i]->via4000, VIA_SIG_CA2, 0);
+                        viacore_signal(unit->via4000, VIA_SIG_CA2, 0);
+                        break;
+                    case DRIVE_TYPE_CMDHD:
+                        viacore_signal(unit->cmdhd->via10, VIA_SIG_CA1, VIA_SIG_RISE);
                         break;
                     default:
-                        viacore_signal(drive_context[i]->via1d1541, VIA_SIG_CA1, 0);
+                        viacore_signal(unit->via1d1541, VIA_SIG_CA1, 0);
                 }
             }
         }
@@ -194,7 +205,7 @@ void iec_pa_write(uint8_t data)
 
     cpu_atn = ((data & 128) >> 7);
 
-    for (i = 0; i < DRIVE_NUM; i++) {
+    for (i = 0; i < NUM_DISK_UNITS; i++) {
         iec_calculate_data_modifier(i);
     }
 
@@ -216,7 +227,7 @@ void iec_pcr_write(uint8_t data)
     cpu_data = ((data & 32) >> 5);
     cpu_clock = ((data & 2) >> 1);
 
-    for (i = 0; i < DRIVE_NUM; i++) {
+    for (i = 0; i < NUM_DISK_UNITS; i++) {
         iec_calculate_data_modifier(i);
     }
 

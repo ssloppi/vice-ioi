@@ -9,9 +9,6 @@
  */
 
 /*
- * Written by
- *  Bas Wassink <b.wassink@ziggo.nl>
- *
  * This file is part of VICE, the Versatile Commodore Emulator.
  * See README for copyright notice.
  *
@@ -36,35 +33,33 @@
 
 #include <gtk/gtk.h>
 
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
-#include "resources.h"
+#include "vice_gtk3.h"
 #include "machine.h"
+#include "resources.h"
 
 #include "cbm2memorysizewidget.h"
 
 
-/** \brief  List of RAM sizes for 5x0
+/** \brief  List of RAM sizes for 5x0 in KiB
  */
 static const vice_gtk3_radiogroup_entry_t ram_sizes_cbm5x0[] = {
-    { "64KB",   64 },
-    { "128KB",  128 },
-    { "256KB",  256 },
-    { "512KB",  512 },
-    { "1024KB", 1024 },
-    { NULL, -1 }
+    { "64KiB",      64 },
+    { "128KiB",     128 },
+    { "256KiB",     256 },
+    { "512KiB",     512 },
+    { "1024KiB",    1024 },
+    { NULL,         -1 }
 };
 
 
-/** \brief  List of RAM sizes for 6x0/7x0
+/** \brief  List of RAM sizes for 6x0/7x0 in KiB
  */
 static const vice_gtk3_radiogroup_entry_t ram_sizes_cbm6x0[] = {
-    { "128KB",  128 },
-    { "256KB",  256 },
-    { "512KB",  512 },
-    { "1024KB", 1024 },
-    { NULL, -1 }
+    { "128KiB",     128 },
+    { "256KiB",     256 },
+    { "512KiB",     512 },
+    { "1024KiB",    1024 },
+    { NULL,         -1 }
 };
 
 
@@ -85,7 +80,9 @@ GtkWidget *cbm2_memory_size_widget_create(void)
         ram_sizes = ram_sizes_cbm6x0;
     }
 
-    grid = uihelpers_create_grid_with_label("RAM size", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "RAM size", 1);
+    /* FIXME: either CSS or set margin in the above call */
+    g_object_set(grid, "margin-left", 8, NULL);
     radio_group = vice_gtk3_resource_radiogroup_new("RamSize", ram_sizes,
             GTK_ORIENTATION_VERTICAL);
     g_object_set(radio_group, "margin-left", 16, NULL);
@@ -97,8 +94,8 @@ GtkWidget *cbm2_memory_size_widget_create(void)
 
 /** \brief  Set used-defined callback to trigger when the RAM size changes
  *
- * \param[in,out]   widget  cbm2 memory size widget
- * \param[in]       user-defined callback
+ * \param[in,out]   widget      cbm2 memory size widget
+ * \param[in]       callback    user-defined callback
  */
 void cbm2_memory_size_widget_set_callback(
         GtkWidget *widget,
@@ -119,7 +116,7 @@ void cbm2_memory_size_widget_update(GtkWidget *widget)
 {
     GtkWidget *group = gtk_grid_get_child_at(GTK_GRID(widget), 0, 1);
     if (group != NULL) {
-        vice_gtk3_resource_radiogroup_sync(widget);
+        vice_gtk3_resource_radiogroup_sync(group);
     }
 }
 

@@ -34,14 +34,16 @@
 
 #include <gtk/gtk.h>
 
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
+#include "vice_gtk3.h"
 #include "resources.h"
 
 #include "petmiscwidget.h"
 
 
+/** \brief  Crtc checkbox */
 static GtkWidget *crtc_widget = NULL;
+
+/** \brief  Blank-on-EOI checkbox */
 static GtkWidget *blank_widget = NULL;
 
 /** \brief  User-defined callback for changes in the Crtc resource
@@ -69,10 +71,8 @@ static void on_crtc_toggled(GtkWidget *widget, gpointer user_data)
     new_val = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
 
     if (new_val != old_val) {
-        debug_gtk3("setting Crtc to %s.", new_val ? "ON" : "OFF");
         resources_set_int("Crtc", new_val);
         if (user_callback_crtc != NULL) {
-            debug_gtk3("calling user_callback_crtc(%d).", new_val);
             user_callback_crtc(new_val);
         }
     }
@@ -95,10 +95,8 @@ static void on_blank_toggled(GtkWidget *widget, gpointer user_data)
     new_val = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
 
     if (new_val != old_val) {
-        debug_gtk3("setting EoiBlank to %s.", new_val ? "ON" : "OFF");
         resources_set_int("EoiBlank", new_val);
         if (user_callback_blank != NULL) {
-            debug_gtk3("calling user_callback_blank(%d).", new_val);
             user_callback_blank(new_val);
         }
 
@@ -124,7 +122,7 @@ GtkWidget *pet_misc_widget_create(void)
     resources_get_int("Crtc", &crtc);
     resources_get_int("EoiBlank", &blank);
 
-    grid = uihelpers_create_grid_with_label("Miscellaneous", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Miscellaneous", 1);
     gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
 
     crtc_widget = gtk_check_button_new_with_label("CRTC chip enable");
@@ -144,20 +142,32 @@ GtkWidget *pet_misc_widget_create(void)
 }
 
 
-void pet_misc_widget_set_crtc_callback(GtkWidget *widget,
-                                       void (*func)(int))
+/** \brief  Set function to trigger on Crtc checkbox toggle
+ *
+ * \param[in]   func    callback function
+ */
+void pet_misc_widget_set_crtc_callback(void (*func)(int))
 {
     user_callback_crtc = func;
 }
 
 
-void pet_misc_widget_set_blank_callback(GtkWidget *widget,
-                                       void (*func)(int))
+/** \brief  Set function to trigger on EOI-blank checkbox toggle
+ *
+ * \param[in]   func    callback function
+ */
+void pet_misc_widget_set_blank_callback(void (*func)(int))
 {
     user_callback_blank = func;
 }
 
 
+/** \brief  Synchronize \a widget with its resources
+ *
+ * Synchronize the PET misc widget's child widgets with their resources.
+ *
+ * \param[in,out]   widget  PET misc widget
+ */
 void pet_misc_widget_sync(GtkWidget *widget)
 {
     int state;

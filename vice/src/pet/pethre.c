@@ -188,13 +188,13 @@ void pethre_shutdown(void)
 int e888_dump(void)
 {
     if (pethre_enabled) {
-	char *s = "";
-	if (reg_E888 != 0x0F && reg_E888 != 0x83) {
-	    s = "(unusual value) ";
-	}
-	mon_out("e888 = %02x %sramON = %d\n", reg_E888, s, petmem_ramON);
+        char *s = "";
+        if (reg_E888 != 0x0F && reg_E888 != 0x83) {
+            s = "(unusual value) ";
+        }
+        mon_out("e888 = %02x %sramON = %d\n", reg_E888, s, petmem_ramON);
 
-	return 0;
+        return 0;
     }
     return -1;
 }
@@ -282,7 +282,10 @@ static void pethre_DRAW(uint8_t *p, int xstart, int xend, int scr_rel, int ymod8
         int width = xend - xstart;
 
         if (screen_rel >= mem_ram + 0xE000) {
-            printf("screen_rel too large: scr_rel=%d, ymod8=%d, screen_rel=%04x, xstart=%d xend=%d\n", scr_rel, ymod8, (int)(screen_rel - mem_ram), xstart, xend);
+            printf("screen_rel too large: scr_rel=%d, ymod8=%d, "
+                    "screen_rel=%04x, xstart=%d xend=%d\n",
+                    scr_rel, ymod8, (unsigned int)(screen_rel - mem_ram),
+                    xstart, xend);
         }
 
         if (ma_lo == 0 && width <= MA_WIDTH) {

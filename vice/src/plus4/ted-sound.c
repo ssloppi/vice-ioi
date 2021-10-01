@@ -48,7 +48,7 @@
 
 /* Some prototypes are needed */
 static int ted_sound_machine_init(sound_t *psid, int speed, int cycles_per_sec);
-static int ted_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int sound_output_channels, int sound_chip_channels, int *delta_t);
+static int ted_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int sound_output_channels, int sound_chip_channels, CLOCK *delta_t);
 static void ted_sound_machine_store(sound_t *psid, uint16_t addr, uint8_t val);
 static uint8_t ted_sound_machine_read(sound_t *psid, uint16_t addr);
 
@@ -62,17 +62,18 @@ static int ted_sound_machine_channels(void)
     return 1;
 }
 
+/* TED sound device */
 static sound_chip_t ted_sound_chip = {
-    NULL, /* no open */
-    ted_sound_machine_init,
-    NULL, /* no close */
-    ted_sound_machine_calculate_samples,
-    ted_sound_machine_store,
-    ted_sound_machine_read,
-    ted_sound_reset,
-    ted_sound_machine_cycle_based,
-    ted_sound_machine_channels,
-    1 /* chip enabled */
+    NULL,                                /* NO sound chip open function */ 
+    ted_sound_machine_init,              /* sound chip init function */
+    NULL,                                /* NO sound chip close function */
+    ted_sound_machine_calculate_samples, /* sound chip calculate samples function */
+    ted_sound_machine_store,             /* sound chip store function */
+    ted_sound_machine_read,              /* sound chip read function */
+    ted_sound_reset,                     /* sound chip reset function */
+    ted_sound_machine_cycle_based,       /* sound chip 'is_cycle_based()' function, chip is NOT cycle based */
+    ted_sound_machine_channels,          /* sound chip 'get_amount_of_channels()' function, sound chip has 1 channel */
+    1                                    /* sound chip enabled flag, chip is always enabled */
 };
 
 static uint16_t ted_sound_chip_offset = 0;
@@ -87,19 +88,43 @@ void ted_sound_chip_init(void)
 static uint8_t plus4_sound_data[5];
 
 /* dummy function for now */
-int machine_sid2_check_range(unsigned int sid2_adr)
+int machine_sid2_check_range(unsigned int sid_adr)
 {
     return 0;
 }
 
 /* dummy function for now */
-int machine_sid3_check_range(unsigned int sid3_adr)
+int machine_sid3_check_range(unsigned int sid_adr)
 {
     return 0;
 }
 
 /* dummy function for now */
-int machine_sid4_check_range(unsigned int sid4_adr)
+int machine_sid4_check_range(unsigned int sid_adr)
+{
+    return 0;
+}
+
+/* dummy function for now */
+int machine_sid5_check_range(unsigned int sid_adr)
+{
+    return 0;
+}
+
+/* dummy function for now */
+int machine_sid6_check_range(unsigned int sid_adr)
+{
+    return 0;
+}
+
+/* dummy function for now */
+int machine_sid7_check_range(unsigned int sid_adr)
+{
+    return 0;
+}
+
+/* dummy function for now */
+int machine_sid8_check_range(unsigned int sid_adr)
 {
     return 0;
 }
@@ -148,7 +173,7 @@ static const int16_t volume_tab[16] = {
     0x3fff, 0x3fff, 0x3fff, 0x3fff, 0x3fff, 0x3fff, 0x3fff, 0x3fff
 };
 
-static int ted_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int soc, int scc, int *delta_t)
+static int ted_sound_machine_calculate_samples(sound_t **psid, int16_t *pbuf, int nr, int soc, int scc, CLOCK *delta_t)
 {
     int i;
     int j;
@@ -360,11 +385,6 @@ uint8_t ted_sound_read(uint16_t addr)
     }
 
     return value;
-}
-
-void sound_machine_prevent_clk_overflow(sound_t *psid, CLOCK sub)
-{
-    sid_sound_machine_prevent_clk_overflow(psid, sub);
 }
 
 char *sound_machine_dump_state(sound_t *psid)

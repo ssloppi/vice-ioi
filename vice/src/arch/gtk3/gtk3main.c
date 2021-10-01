@@ -28,18 +28,18 @@
 #include "vice.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <signal.h>
+#include <gtk/gtk.h>
 
+#include "archdep.h"
 #include "log.h"
 #include "machine.h"
 #include "main.h"
+#include "mainlock.h"
+#include "render_thread.h"
+#include "ui.h"
 #include "video.h"
-
-/* For the ugly hack below */
-#ifdef WIN32_COMPILE
-# include "windows.h"
-#endif
-
 
 /** \brief  Program driver
  *
@@ -70,7 +70,31 @@ int main(int argc, char **argv)
     _putenv("LANG=C");
 #endif
 
-    return main_program(argc, argv);
+    /*
+     * Each thread in VICE, including main, needs to call this before anything
+     * else. Basically this is for init COM on Windows.
+     */
+    archdep_thread_init();
+
+    /*
+     * The exit code needs to know what thread is the main thread, so that if
+     * archdep_vice_exit() is called from any other thread, it knows it needs
+     * to asynchronously call exit() on the main thread.
+     */
+    archdep_set_main_thread();
+
+    int init_result = main_program(argc, argv);
+    if (init_result) {
+        return init_result;
+    }
+
+    gtk_main();
+
+    /*
+     * Because gtk_main will  never return, we call archdep_thread_shutdown()
+     * for the main thread in the exit subsystem rather than here.
+     */
+    return 0;
 }
 
 
@@ -78,12 +102,22 @@ int main(int argc, char **argv)
  */
 void main_exit(void)
 {
-    /* Disable SIGINT.  This is done to prevent the user from keeping C-c
-       pressed and thus breaking the cleanup process, which might be
-       dangerous.  */
-    signal(SIGINT, SIG_IGN);
+    /* The vice thread might be waiting for us to release the main lock */
+    mainlock_release_if_locked();
 
-    log_message(LOG_DEFAULT, "\nExiting...");
+    /*
+     * The render thread MUST be joined before the platform exit() is called
+     * otherwise gl calls can deadlock
+     */
+    render_thread_shutdown_and_join_all();
+
+    /*
+     * This needs to happen before machine_shutdown as various things get freed
+     * in that process.
+     */
+    ui_exit();
+
+    vice_thread_shutdown();
 
     machine_shutdown();
 }

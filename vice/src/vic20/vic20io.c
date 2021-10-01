@@ -30,6 +30,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "archdep.h"
 #include "cartio.h"
 #include "cartridge.h"
 #include "cmdline.h"
@@ -88,7 +89,6 @@ static void io_source_detach(io_source_detach_t *source)
             resources_set_int(source->det_name, 0);
             break;
     }
-    ui_update_menus();
 }
 
 /*
@@ -118,7 +118,7 @@ static void io_source_msg_detach_all(uint16_t addr, int amount, io_source_list_t
 
             /* first part of the message "read collision at x from" */
             if (found == 0) {
-                old_msg = lib_stralloc("I/O read collision at %X from ");
+                old_msg = lib_strdup("I/O read collision at %X from ");
                 new_msg = util_concat(old_msg, current->device->name, NULL);
                 lib_free(old_msg);
             }
@@ -187,7 +187,7 @@ static void io_source_msg_detach_last(uint16_t addr, int amount, io_source_list_
 
             /* first part of the message "read collision at x from" */
             if (found == 0) {
-                old_msg = lib_stralloc("I/O read collision at %X from ");
+                old_msg = lib_strdup("I/O read collision at %X from ");
                 new_msg = util_concat(old_msg, current->device->name, NULL);
                 lib_free(old_msg);
             }
@@ -246,7 +246,7 @@ static void io_source_log_collisions(uint16_t addr, int amount, io_source_list_t
 
             /* first part of the message "read collision at x from" */
             if (found == 0) {
-                old_msg = lib_stralloc("I/O read collision at %X from ");
+                old_msg = lib_strdup("I/O read collision at %X from ");
                 new_msg = util_concat(old_msg, current->device->name, NULL);
                 lib_free(old_msg);
             }
@@ -406,6 +406,13 @@ io_source_list_t *io_source_register(io_source_t *device)
         case 0x9c00:
             current = &vic20io3_head;
             break;
+        default:
+            log_error(LOG_DEFAULT,
+                    "io_source_register internal error: I/O range 0x%04x "
+                    "does not exist",
+                    device->start_address & 0xff00U);
+            archdep_vice_exit(-1);
+            break;
     }
 
     while (current->next != NULL) {
@@ -549,21 +556,27 @@ void io_source_ioreg_add_list(struct mem_ioreg_list_s **mem_ioreg_list)
     current = vic20io0_head.next;
 
     while (current) {
-        mon_ioreg_add_list(mem_ioreg_list, current->device->name, current->device->start_address, current->device->start_address + decodemask(current->device->address_mask), current->device->dump, NULL);
+        mon_ioreg_add_list(mem_ioreg_list, current->device->name, current->device->start_address,
+                           current->device->start_address + decodemask(current->device->address_mask),
+                           current->device->dump, NULL, current->device->mirror_mode);
         current = current->next;
     }
 
     current = vic20io2_head.next;
 
     while (current) {
-        mon_ioreg_add_list(mem_ioreg_list, current->device->name, current->device->start_address, current->device->start_address + decodemask(current->device->address_mask), current->device->dump, NULL);
+        mon_ioreg_add_list(mem_ioreg_list, current->device->name, current->device->start_address,
+                           current->device->start_address + decodemask(current->device->address_mask),
+                           current->device->dump, NULL, current->device->mirror_mode);
         current = current->next;
     }
 
     current = vic20io3_head.next;
 
     while (current) {
-        mon_ioreg_add_list(mem_ioreg_list, current->device->name, current->device->start_address, current->device->start_address + decodemask(current->device->address_mask), current->device->dump, NULL);
+        mon_ioreg_add_list(mem_ioreg_list, current->device->name, current->device->start_address,
+                           current->device->start_address + decodemask(current->device->address_mask),
+                           current->device->dump, NULL, current->device->mirror_mode);
         current = current->next;
     }
 }

@@ -32,6 +32,7 @@
 #include <stdio.h>
 
 #include "types.h"
+#include "vice_sdl.h"
 
 #include "lib.h"
 #include "menu_common.h"
@@ -51,7 +52,7 @@ static UI_MENU_CALLBACK(custom_auto_playback_frames)
         sprintf(buf, "%i", previous);
         value = sdl_ui_text_input_dialog("Enter number of auto playback frames", buf);
         if (value) {
-            new_value = strtol(value, NULL, 0);
+            new_value = (int)strtol(value, NULL, 0);
             if (new_value != previous) {
                 resources_set_int("AutoPlaybackFrames", new_value);
             }
@@ -65,6 +66,8 @@ static UI_MENU_CALLBACK(custom_auto_playback_frames)
 }
 
 UI_MENU_DEFINE_TOGGLE(MainCPU_TRACE)
+UI_MENU_DEFINE_TOGGLE(IEC_TRACE)
+UI_MENU_DEFINE_TOGGLE(IEEE_TRACE)
 UI_MENU_DEFINE_TOGGLE(Drive0CPU_TRACE)
 UI_MENU_DEFINE_TOGGLE(Drive1CPU_TRACE)
 UI_MENU_DEFINE_TOGGLE(Drive2CPU_TRACE)
@@ -171,6 +174,14 @@ const ui_menu_entry_t debug_menu[] = {
       MENU_ENTRY_RESOURCE_TOGGLE,
       toggle_MainCPU_TRACE_callback,
       NULL },
+    { "IEC bus trace",
+      MENU_ENTRY_RESOURCE_TOGGLE,
+      toggle_IEC_TRACE_callback,
+      NULL },
+    { "IEEE-488 bus trace",
+      MENU_ENTRY_RESOURCE_TOGGLE,
+      toggle_IEEE_TRACE_callback,
+      NULL },
     { "Drive0 CPU trace",
       MENU_ENTRY_RESOURCE_TOGGLE,
       toggle_Drive0CPU_TRACE_callback,
@@ -226,6 +237,10 @@ const ui_menu_entry_t debug_menu_dtv[] = {
     { "Main CPU trace",
       MENU_ENTRY_RESOURCE_TOGGLE,
       toggle_MainCPU_TRACE_callback,
+      NULL },
+    { "IEC bus trace",
+      MENU_ENTRY_RESOURCE_TOGGLE,
+      toggle_IEC_TRACE_callback,
       NULL },
     { "Drive0 CPU trace",
       MENU_ENTRY_RESOURCE_TOGGLE,

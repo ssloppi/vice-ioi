@@ -34,50 +34,62 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
-#include "machine.h"
-#include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
 #include "basedialogs.h"
-#include "openfiledialog.h"
-#include "savefiledialog.h"
-#include "cartridge.h"
+#include "basewidgets.h"
 #include "carthelpers.h"
+#include "cartridge.h"
+#include "debug_gtk3.h"
+#include "machine.h"
+#include "openfiledialog.h"
+#include "resources.h"
+#include "savefiledialog.h"
+#include "widgethelpers.h"
 
 #include "easyflashwidget.h"
 
 
-/** \brief  Handler for the "clicked" event of the "Save As" button
+/** \brief  Callback for the save-dialog
  *
- * \param[in]   widget      button
- * \param[in]   user_data   extra event data (unused)
+ * \param[in,out]   dialog      save-file dialog
+ * \param[in,out]   filename    path to file to save
+ * \param[in]       data        extra data (unused)
  */
-static void on_save_clicked(GtkWidget *widget, gpointer user_data)
+static void save_filename_callback(GtkDialog *dialog,
+                                   gchar *filename,
+                                   gpointer data)
 {
-    gchar *filename;
-
-    filename = vice_gtk3_save_file_dialog("Save EasyFlasg image as ...",
-            NULL, TRUE, NULL);
     if (filename != NULL) {
-        debug_gtk3("writing EF image file as '%s'.", filename);
         if (carthelpers_save_func(CARTRIDGE_EASYFLASH, filename) < 0) {
             vice_gtk3_message_error("VICE core",
                     "Failed to save '%s'", filename);
         }
         g_free(filename);
     }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
 
-/** \brief  Handler for the "clicked" event of the "Flush now" button
+/** \brief  Handler for the 'clicked' event of the "Save As" button
  *
- * \param[in]   widget      button
+ * \param[in]   widget      button (unused)
+ * \param[in]   user_data   extra event data (unused)
+ */
+static void on_save_clicked(GtkWidget *widget, gpointer user_data)
+{
+    vice_gtk3_save_file_dialog("Save Easyflash image as ...",
+                               NULL, TRUE, NULL,
+                               save_filename_callback,
+                               NULL);
+}
+
+
+/** \brief  Handler for the 'clicked' event of the "Flush now" button
+ *
+ * \param[in]   widget      button (unused)
  * \param[in]   user_data   extra event data (unused)
  */
 static void on_flush_clicked(GtkWidget *widget, gpointer user_data)
 {
-    debug_gtk3("flushing EF image.");
     if (carthelpers_flush_func(CARTRIDGE_EASYFLASH) < 0) {
         vice_gtk3_message_error("VICE core",
                 "Failed to flush the EasyFlash image");
@@ -100,9 +112,7 @@ GtkWidget *easyflash_widget_create(GtkWidget *parent)
     GtkWidget *save_button;
     GtkWidget *flush_button;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 16);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT);
 
     jumper = vice_gtk3_resource_check_button_new(
             "EasyFlashJumper", "Set Easy Flash jumper");
@@ -121,11 +131,20 @@ GtkWidget *easyflash_widget_create(GtkWidget *parent)
     g_signal_connect(save_button, "clicked", G_CALLBACK(on_save_clicked),
             NULL);
 
+    gtk_widget_set_sensitive(save_button,
+            (gboolean)(carthelpers_can_save_func(CARTRIDGE_EASYFLASH)));
+
     /* Flush image now */
-    flush_button = gtk_button_new_with_label("Flush image now");
+    flush_button = gtk_button_new_with_label("Save image");
     gtk_grid_attach(GTK_GRID(grid), flush_button, 1, 1, 1, 1);
     g_signal_connect(flush_button, "clicked", G_CALLBACK(on_flush_clicked),
             NULL);
+
+    if (carthelpers_can_flush_func(CARTRIDGE_EASYFLASH)) {
+        gtk_widget_set_sensitive(flush_button, TRUE);
+    } else {
+        gtk_widget_set_sensitive(flush_button, FALSE);
+    }
 
     gtk_widget_show_all(grid);
     return grid;

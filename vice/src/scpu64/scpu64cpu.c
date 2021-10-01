@@ -31,7 +31,6 @@
 
 #include "interrupt.h"
 #include "6510core.h"
-#include "clkguard.h"
 #include "alarm.h"
 #include "main65816cpu.h"
 #include "mem.h"
@@ -75,7 +74,7 @@ alarm_context_t *maincpu_alarm_context = NULL;
 int maincpu_ba_low_flags = 0;
 static CLOCK maincpu_ba_low_start = 0;
 
-int scpu64_get_half_cycle(void)
+CLOCK scpu64_get_half_cycle(void)
 {
     if (scpu64_fastmode) {
         return maincpu_accu / 1000000;
@@ -332,17 +331,6 @@ void scpu64_clock_read_ioram(void) /* scpu64 v1 $d200-$d3ff one extra 20 Mhz cyc
     }
 }
 
-static void clk_overflow_callback(CLOCK sub, void *unused_data)
-{
-    if (buffer_finish > sub) {
-        buffer_finish -= sub;
-    } else {
-        buffer_finish = 0;
-    }
-}
-
-#define CPU_ADDITIONAL_INIT() clk_guard_add_callback(maincpu_clk_guard, clk_overflow_callback, NULL)
-
 /* SCPU64 needs external reg_pc */
 #define NEED_REG_PC
 
@@ -390,29 +378,29 @@ static inline uint8_t load_long(uint32_t addr)
 int scpu64_snapshot_write_cpu_state(snapshot_module_t *m)
 {
     return SMW_B(m, scpu64_fastmode) < 0
-        || SMW_DW(m, buffer_finish) < 0
-        || SMW_DW(m, buffer_finish_half) < 0
-        || SMW_DW(m, maincpu_accu) < 0
+        || SMW_CLOCK(m, buffer_finish) < 0
+        || SMW_CLOCK(m, buffer_finish_half) < 0
+        || SMW_CLOCK(m, maincpu_accu) < 0
         || SMW_DW(m, maincpu_ba_low_flags) < 0
-        || SMW_DW(m, maincpu_ba_low_start) < 0;
+        || SMW_CLOCK(m, maincpu_ba_low_start) < 0;
 }
 
 /* XXX: Assumes `CLOCK' is the same size as a `DWORD'.  */
 int scpu64_snapshot_read_cpu_state(snapshot_module_t *m)
 {
     return SMR_B(m, &scpu64_fastmode) < 0
-        || SMR_DW(m, &buffer_finish) < 0
-        || SMR_DW(m, &buffer_finish_half) < 0
-        || SMR_DW(m, &maincpu_accu) < 0
+        || SMR_CLOCK(m, &buffer_finish) < 0
+        || SMR_CLOCK(m, &buffer_finish_half) < 0
+        || SMR_CLOCK(m, &maincpu_accu) < 0
         || SMR_DW_INT(m, &maincpu_ba_low_flags) < 0
-        || SMR_DW(m, &maincpu_ba_low_start) < 0;
+        || SMR_CLOCK(m, &maincpu_ba_low_start) < 0;
 }
 
 #define EMULATION_MODE_CHANGED scpu64_emulation_mode = reg_emul
 
 #define CLK_INC(clock) scpu64_clock_inc(0)
 
-#define CPU_ADDITIONAL_RESET() (buffer_finish = maincpu_clk, buffer_finish_half = 0, maincpu_accu = 0, maincpu_diff = machine_get_cycles_per_second())
+#define CPU_ADDITIONAL_RESET() (buffer_finish = maincpu_clk, buffer_finish_half = 0, maincpu_accu = 0, maincpu_diff = (CLOCK)machine_get_cycles_per_second())
 
 #define FETCH_PARAM(addr) ((((int)(addr)) < bank_limit) ? (check_ba(), scpu64_clock_inc(0), bank_base[addr]) : LOAD_PBR(addr))
 #define FETCH_PARAM_DUMMY(addr) scpu64_clock_inc(0)

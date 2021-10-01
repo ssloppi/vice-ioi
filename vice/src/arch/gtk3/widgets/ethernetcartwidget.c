@@ -36,26 +36,25 @@
 #include <gtk/gtk.h>
 #include <stdlib.h>
 
+#include "archdep_defs.h"
+#include "archdep_ethernet_available.h"
+#include "basedialogs.h"
+#include "basewidgets.h"
+#include "cartridge.h"
+#include "debug_gtk3.h"
 #include "machine.h"
 #include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
 #include "widgethelpers.h"
-#include "basedialogs.h"
-#include "cartridge.h"
-
 #include "ethernetcartwidget.h"
 
 
 /** \brief  List of Ethernet Cartridge emulation modes
  */
 static const vice_gtk3_radiogroup_entry_t modes[] = {
-    { "ETFE", 0 },
-    { "RRNet", 1 },
-    { NULL, -1 }
+    { "ETFE",   0 },
+    { "RRNet",  1 },
+    { NULL,     -1 }
 };
-
-
 
 
 /** \brief  Handler for the "changed" event of the I/O base combo box
@@ -72,7 +71,6 @@ static void on_base_changed(GtkWidget *widget, gpointer user_data)
     id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(widget));
     base = (int)strtol(id, &endptr, 10);
     if (*endptr == '\0') {
-        debug_gtk3("setting ETHERNETCARTBase to $%04X.", base);
         resources_set_int("ETHERNETCARTBase", base);
     }
 }
@@ -117,8 +115,8 @@ static GtkWidget *create_cartridge_base_widget(void)
 
             index = 0;
             for (base = 0xde00; base < 0xe000; base += 0x10) {
-                g_snprintf(text, 256, "$%04X", base);
-                g_snprintf(id, 80, "%u", base);
+                g_snprintf(text, sizeof(text), "$%04X", base);
+                g_snprintf(id, sizeof(id), "%u", base);
                 gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), id, text);
                 if (current == base) {
                     gtk_combo_box_set_active(GTK_COMBO_BOX(combo), index);
@@ -132,8 +130,8 @@ static GtkWidget *create_cartridge_base_widget(void)
             index = 0;
             /* add range $9800-$98f0 */
             for (base = 0x9800; base < 0x9900; base += 0x10) {
-                g_snprintf(text, 256, "$%04X", base);
-                g_snprintf(id, 80, "%u", base);
+                g_snprintf(text, sizeof(text), "$%04X", base);
+                g_snprintf(id, sizeof(id), "%u", base);
                 gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), id, text);
                 if (current == base) {
                     gtk_combo_box_set_active(GTK_COMBO_BOX(combo), index);
@@ -142,8 +140,8 @@ static GtkWidget *create_cartridge_base_widget(void)
             }
             /* add range $9c00-$9cf0 */
             for (base = 0x9c00; base < 0x9d00; base += 0x10) {
-                g_snprintf(text, 256, "$%04X", base);
-                g_snprintf(id, 80, "%u", base);
+                g_snprintf(text, sizeof(text), "$%04X", base);
+                g_snprintf(id, sizeof(id), "%u", base);
                 gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo), id, text);
                 if (current == base) {
                     gtk_combo_box_set_active(GTK_COMBO_BOX(combo), index);
@@ -177,9 +175,7 @@ GtkWidget *ethernet_cart_widget_create(GtkWidget *parent)
     GtkWidget *base_label;
     int row;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 8);
 
     enable_widget = vice_gtk3_resource_check_button_new(
             "ETHERNETCART_ACTIVE", "Enable ethernet cartridge");
@@ -215,6 +211,7 @@ GtkWidget *ethernet_cart_widget_create(GtkWidget *parent)
     base_widget = create_cartridge_base_widget();
     gtk_grid_attach(GTK_GRID(grid), base_widget, 1, row, 1, 1);
 
+    gtk_widget_set_sensitive(grid, archdep_ethernet_available());
     gtk_widget_show_all(grid);
     return grid;
 }

@@ -73,13 +73,24 @@ static const romset_button_t romset_buttons[] = {
 /*
  * References to widgets
  */
+
+/** \brief  Predefined ROM sets combobox */
 static GtkWidget *romset_predefs = NULL;
+
+/** \brief  ROM set treeview */
 static GtkWidget *romset_listing = NULL;
+
+/** \brief  Model of the romsets */
 static GtkTreeStore *romset_model = NULL;
+
+/** bnrief  ROM set management view */
 static GtkWidget *romset_view = NULL;
 
 
 /** \brief  Temporary event handler for buttons
+ *
+ * \param[in]   widget  button (unused)
+ * \param[in]   data    extra event data (unused)
  */
 static void not_implemented(GtkWidget *widget, gpointer data)
 {
@@ -90,7 +101,7 @@ static void not_implemented(GtkWidget *widget, gpointer data)
 /** \brief  Handler for the 'show current' button
  *
  * \param[in]   widget  button
- * \param[in]   data    unused
+ * \param[in]   data    extra event data (unused)
  */
 static void on_show_current_clicked(GtkWidget *widget, gpointer data)
 {
@@ -108,13 +119,16 @@ static void on_show_current_clicked(GtkWidget *widget, gpointer data)
 
 }
 
-/** \brief  Handler for the 'load' button
+/** \brief  Handler for the 'clicked' even of the "load" button
  *
  * \param[in]   widget  button
  * \param[in]   data    unused
  */
 static void on_load_archive(GtkWidget *widget, gpointer data)
 {
+
+    debug_gtk3("Needs reimplementation!\n");
+#if 0
     gchar *filename;
     const char *patterns[] = { "*.vra", NULL };
 
@@ -132,6 +146,7 @@ static void on_load_archive(GtkWidget *widget, gpointer data)
         }
         g_free(filename);
     }
+#endif
 }
 
 
@@ -146,7 +161,6 @@ static void on_predef_changed(GtkWidget *widget, gpointer data)
 
     id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(widget));
     if (id != NULL) {
-        debug_gtk3("Setting ROM set to '%s'.", id);
         machine_romset_file_load(id);
 
         /* TODO: use a callback to update the ROM widgets when loading has
@@ -324,7 +338,8 @@ GtkWidget *romset_manager_widget_create(
     label = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(label), "<b>Predefined ROM sets</b>");
     gtk_widget_set_halign(label, GTK_ALIGN_START);
-       gtk_grid_attach(GTK_GRID(grid), label, 0, row, 2, 1);
+    g_object_set(label, "margin-left", 16, NULL);
+    gtk_grid_attach(GTK_GRID(grid), label, 0, row, 2, 1);
     row++;
 
     romset_predefs = create_predef_romsets_widget(predefs);
@@ -335,6 +350,7 @@ GtkWidget *romset_manager_widget_create(
     label = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(label), "<b>ROM set listing</b>");
     gtk_widget_set_halign(label, GTK_ALIGN_START);
+    g_object_set(label, "margin-left", 16, NULL);
     gtk_grid_attach(GTK_GRID(grid), label, 0, row, 2, 1);
     row++;
 
@@ -359,6 +375,7 @@ GtkWidget *romset_manager_widget_create(
     label = gtk_label_new(NULL);
     gtk_label_set_markup(GTK_LABEL(label), "<b>ROM set management</b>");
     gtk_widget_set_halign(label, GTK_ALIGN_START);
+    g_object_set(label, "margin-left", 16, NULL);
     gtk_grid_attach(GTK_GRID(grid), label, 0, row, 2, 1);
     row++;
 

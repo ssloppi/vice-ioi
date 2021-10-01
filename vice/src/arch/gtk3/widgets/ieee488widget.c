@@ -31,21 +31,27 @@
  */
 
 #include "vice.h"
+
 #include <gtk/gtk.h>
 
+#include "vice_gtk3.h"
+#include "cartridge.h"
+#include "log.h"
 #include "machine.h"
 #include "resources.h"
-#include "debug_gtk3.h"
-#include "basewidgets.h"
-#include "widgethelpers.h"
-#include "basedialogs.h"
-#include "openfiledialog.h"
-#include "cartridge.h"
+#include "ui.h"
 
 #include "ieee488widget.h"
 
 
-/** \brief  Handler for the "toggled" event of the 'enable' check button
+/** \brief  Reference to the entry widget used for the IEEE-488 ROM
+ *
+ * TODO:    Check if we can refactor this code to use a 'base widget'
+ */
+static GtkWidget *entry_widget;
+
+
+/** \brief  Handler for the 'toggled' event of the 'enable' check button
  *
  * Toggles the 'enabled' state of the IEEE-488 adapter/cart, but only if an
  * EEPROM image has been specified, otherwise when trying to set the check
@@ -77,13 +83,41 @@ static void on_enable_toggled(GtkWidget *widget, gpointer data)
 
     if (state) {
         if (carthelpers_enable_func(CARTRIDGE_IEEE488) < 0) {
-            debug_gtk3("failed to enable IEEE488 cartridge.");
+            log_error(LOG_ERR, "failed to enable IEEE488 cartridge.");
         }
     } else {
         if (carthelpers_disable_func(CARTRIDGE_IEEE488) < 0) {
-            debug_gtk3("failed to disable IEEE488 cartridge.");
+            log_error(LOG_ERR, "failed to disable IEEE488 cartridge.");
         }
     }
+}
+
+
+/** \brief  Callback for the open-file dialog
+ *
+ * \param[in,out]   dialog      open-file dialog
+ * \param[in]       filename    filename or NULL on cancel
+ * \param[in]       data        extra data (unused)
+ */
+static void browse_filename_callback(GtkDialog *dialog,
+                                     gchar *filename,
+                                     gpointer data)
+{
+    if (filename != NULL) {
+        gtk_entry_set_text(GTK_ENTRY(entry_widget), filename);
+
+        /* required, since setting the text of the entry doesn't trigger an
+         * update of the connected resource (it only responds to focus-out and
+         * pressing 'Enter' */
+        if (resources_set_string("IEEE488Image", filename) < 0) {
+            vice_gtk3_message_error("VICE core",
+                    "Failed to set '%s' as IEEE-488 EEPROM image.",
+                    filename);
+        }
+        g_free(filename);
+    }
+
+    gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
 
@@ -97,24 +131,11 @@ static void on_enable_toggled(GtkWidget *widget, gpointer data)
  */
 static void on_browse_clicked(GtkWidget *widget, gpointer user_data)
 {
-    gchar *filename;
-
-    filename = vice_gtk3_open_file_dialog("Open IEEE-488 image", NULL, NULL,
+    vice_gtk3_open_file_dialog(
+            "Open IEEE-488 image",
+            NULL, NULL, NULL,
+            browse_filename_callback,
             NULL);
-    if (filename != NULL) {
-        GtkEntry *entry = GTK_ENTRY(user_data);
-        debug_gtk3("setting IEEE488Image to '%s'.", filename);
-        gtk_entry_set_text(entry, filename);
-        /* required, since setting the text of the entry doesn't trigger an
-         * update of the connected resource (it only responds to focus-out and
-         * pressing 'Enter' */
-        if (resources_set_string("IEEE488Image", filename) < 0) {
-            vice_gtk3_message_error("VICE core",
-                    "Failed to set '%s' as IEEE-488 EEPROM image.",
-                    filename);
-        }
-        g_free(filename);
-    }
 }
 
 
@@ -129,7 +150,6 @@ GtkWidget *ieee488_widget_create(GtkWidget *parent)
     GtkWidget *grid;
     GtkWidget *enable_widget;
     GtkWidget *label;
-    GtkWidget *entry;
     GtkWidget *browse;
 
     const char *image;
@@ -140,9 +160,7 @@ GtkWidget *ieee488_widget_create(GtkWidget *parent)
     }
     enable_state = carthelpers_is_enabled_func(CARTRIDGE_IEEE488);
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 16);
-    gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(VICE_GTK3_DEFAULT, VICE_GTK3_DEFAULT);
 
     /* we can't use a `resource_check_button` here, since toggling the resource
      * depends on whether an image file is specified
@@ -157,14 +175,13 @@ GtkWidget *ieee488_widget_create(GtkWidget *parent)
 
     label = gtk_label_new("IEEE-488 image");
     gtk_widget_set_halign(label, GTK_ALIGN_START);
-    entry = vice_gtk3_resource_entry_full_new("IEEE488Image");
-    gtk_widget_set_hexpand(entry, TRUE);
+    entry_widget = vice_gtk3_resource_entry_full_new("IEEE488Image");
+    gtk_widget_set_hexpand(entry_widget, TRUE);
     browse = gtk_button_new_with_label("Browse ...");
-    g_signal_connect(browse, "clicked", G_CALLBACK(on_browse_clicked),
-            (gpointer)entry);
+    g_signal_connect(browse, "clicked", G_CALLBACK(on_browse_clicked), NULL);
 
     gtk_grid_attach(GTK_GRID(grid), label, 0, 1, 1, 1);
-    gtk_grid_attach(GTK_GRID(grid), entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), entry_widget, 1, 1, 1, 1);
     gtk_grid_attach(GTK_GRID(grid), browse, 2, 1, 1, 1);
 
     g_signal_connect(enable_widget, "toggled", G_CALLBACK(on_enable_toggled), NULL);

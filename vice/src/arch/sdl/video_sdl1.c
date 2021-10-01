@@ -1,9 +1,8 @@
-/*
- * video.c - SDL video
+/** \brief  video.c
+ * \brief   SDL video (probably needs a more descriptive 'brief')
  *
- * Written by
- *  Hannu Nuotio <hannu.nuotio@tut.fi>
- *  Marco van den Heuvel <blackystardust68@yahoo.com>
+ * \author  Hannu Nuotio <hannu.nuotio@tut.fi>
+ * \author  Marco van den Heuvel <blackystardust68@yahoo.com>
  *
  * Based on code by
  *  Ettore Perazzoli
@@ -50,6 +49,7 @@
 #include "lightpendrv.h"
 #include "log.h"
 #include "machine.h"
+#include "mousedrv.h"
 #include "palette.h"
 #include "raster.h"
 #include "resources.h"
@@ -332,11 +332,7 @@ static const resource_string_t resources_string[] = {
     RESOURCE_STRING_LIST_END
 };
 
-#if defined(WATCOM_COMPILE)
-#define VICE_DEFAULT_BITDEPTH 32
-#else
 #define VICE_DEFAULT_BITDEPTH 0
-#endif
 
 #ifdef ANDROID_COMPILE
 #define SDLLIMITMODE_DEFAULT     SDL_LIMIT_MODE_MAX
@@ -379,7 +375,7 @@ int video_arch_resources_init(void)
     DBG(("%s", __func__));
 
     if (machine_class == VICE_MACHINE_VSID) {
-        if (joy_arch_resources_init() < 0) {
+        if (joy_sdl_resources_init() < 0) {
             return -1;
         }
     }
@@ -565,7 +561,7 @@ static video_canvas_t *sdl_canvas_create(video_canvas_t *canvas, unsigned int *w
     int hwscale = 0;
     int lightpen_updated = 0;
 #ifdef HAVE_HWSCALE
-    int rbits = 0, gbits = 0, bbits = 0;
+    int rbits = 0, gbits = 0, bbits = 0, abits = 0;
     const Uint32
 
 #if SDL_BYTEORDER == SDL_BIG_ENDIAN
@@ -584,6 +580,8 @@ static video_canvas_t *sdl_canvas_create(video_canvas_t *canvas, unsigned int *w
 
     new_width *= canvas->videoconfig->scalex;
     new_height *= canvas->videoconfig->scaley;
+
+    sdl_ui_set_window_icon(NULL);
 
     if ((canvas == sdl_active_canvas) && (canvas->fullscreenconfig->enable)) {
         fullscreen = 1;
@@ -652,11 +650,12 @@ static video_canvas_t *sdl_canvas_create(video_canvas_t *canvas, unsigned int *w
                 sdl_bitdepth = 32;
             /* fall through */
             case 32:
-                rbits = gbits = bbits = 8;
+                rbits = gbits = bbits = abits = 8;
                 sdl_gl_mode = GL_RGBA;
                 break;
             case 24:
                 rbits = gbits = bbits = 8;
+                abits = 0;
                 sdl_gl_mode = GL_RGB;
                 break;
             default:
@@ -671,6 +670,7 @@ static video_canvas_t *sdl_canvas_create(video_canvas_t *canvas, unsigned int *w
         SDL_GL_SetAttribute(SDL_GL_RED_SIZE, rbits);
         SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, gbits);
         SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, bbits);
+        SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, abits);
     }
 #endif
 
@@ -793,7 +793,14 @@ static video_canvas_t *sdl_canvas_create(video_canvas_t *canvas, unsigned int *w
         }
     }
 
-    log_message(sdlvideo_log, "%s (%s) %ix%i %ibpp %s%s", canvas->videoconfig->chip_name, (canvas == sdl_active_canvas) ? "active" : "inactive", actual_width, actual_height, sdl_bitdepth, hwscale ? "OpenGL " : "", (canvas->fullscreenconfig->enable) ? "(fullscreen)" : "");
+    log_message(sdlvideo_log, "%s (%s) %ux%u %ibpp %s%s",
+        canvas->videoconfig->chip_name,
+        (canvas == sdl_active_canvas) ? "active" : "inactive",
+        actual_width,
+        actual_height,
+        sdl_bitdepth,
+        hwscale ? "OpenGL " : "",
+        (canvas->fullscreenconfig->enable) ? "(fullscreen)" : "");
 #ifdef SDL_DEBUG
     log_message(sdlvideo_log, "Canvas %ix%i, real %ix%i", new_width, new_height, canvas->real_width, canvas->real_height);
 #endif
@@ -878,10 +885,10 @@ void video_canvas_refresh(struct video_canvas_s *canvas, unsigned int xs, unsign
 
         backup = canvas->draw_buffer->draw_buffer;
         canvas->draw_buffer->draw_buffer = canvas->draw_buffer_vsid->draw_buffer;
-        video_canvas_render(canvas, (uint8_t *)canvas->screen->pixels, w, h, xs, ys, xi, yi, canvas->screen->pitch, canvas->screen->format->BitsPerPixel);
+        video_canvas_render(canvas, (uint8_t *)canvas->screen->pixels, w, h, xs, ys, xi, yi, canvas->screen->pitch);
         canvas->draw_buffer->draw_buffer = backup;
     } else {
-        video_canvas_render(canvas, (uint8_t *)canvas->screen->pixels, w, h, xs, ys, xi, yi, canvas->screen->pitch, canvas->screen->format->BitsPerPixel);
+        video_canvas_render(canvas, (uint8_t *)canvas->screen->pixels, w, h, xs, ys, xi, yi, canvas->screen->pitch);
     }
 
     if (SDL_MUSTLOCK(canvas->screen)) {
@@ -950,11 +957,13 @@ void video_canvas_refresh(struct video_canvas_s *canvas, unsigned int xs, unsign
 #endif
 
     SDL_UpdateRect(canvas->screen, xi, yi, w, h);
+    ui_autohide_mouse_cursor();
 }
 
 int video_canvas_set_palette(struct video_canvas_s *canvas, struct palette_s *palette)
 {
     unsigned int i, col = 0;
+    video_render_color_tables_t *color_tables = &canvas->videoconfig->color_tables;
     SDL_PixelFormat *fmt;
     SDL_Color colors[256];
 
@@ -990,7 +999,7 @@ int video_canvas_set_palette(struct video_canvas_s *canvas, struct palette_s *pa
         SDL_SetColors(canvas->screen, colors, 0, palette->num_entries);
     } else {
         for (i = 0; i < 256; i++) {
-            video_render_setrawrgb(i, SDL_MapRGB(fmt, (Uint8)i, 0, 0), SDL_MapRGB(fmt, 0, (Uint8)i, 0), SDL_MapRGB(fmt, 0, 0, (Uint8)i));
+            video_render_setrawrgb(color_tables, i, SDL_MapRGB(fmt, (Uint8)i, 0, 0), SDL_MapRGB(fmt, 0, (Uint8)i, 0), SDL_MapRGB(fmt, 0, 0, (Uint8)i));
         }
         video_render_initraw(canvas->videoconfig);
     }
@@ -1026,10 +1035,10 @@ void video_canvas_resize(struct video_canvas_s *canvas, char resize_canvas)
             canvas->real_width = canvas->actual_width;
             canvas->real_height = canvas->actual_height;
         }
-	/* Recreating the video like this sometimes makes us lose the
-	   fact that keys were released or pressed. Reset the keyboard
-	   state. */
-	keyboard_key_clear();
+        /* Recreating the video like this sometimes makes us lose the
+        fact that keys were released or pressed. Reset the keyboard
+        state. */
+        keyboard_key_clear();
     }
 }
 
@@ -1138,6 +1147,15 @@ void sdl_video_canvas_switch(int index)
     video_viewport_resize(canvas, 1);
 }
 
+int video_arch_get_active_chip(void)
+{
+    if (sdl_active_canvas_num == VIDEO_CANVAS_IDX_VDC) {
+        return VIDEO_CHIP_VDC;
+    } else {
+        return VIDEO_CHIP_VICII;
+    }
+}
+
 void video_arch_canvas_init(struct video_canvas_s *canvas)
 {
     DBG(("%s: (%p, %i)", __func__, canvas, sdl_num_screens));
@@ -1146,8 +1164,6 @@ void video_arch_canvas_init(struct video_canvas_s *canvas)
         log_error(sdlvideo_log, "Too many canvases!");
         archdep_vice_exit(-1);
     }
-
-    canvas->video_draw_buffer_callback = NULL;
 
     canvas->fullscreenconfig = lib_calloc(1, sizeof(fullscreenconfig_t));
 
@@ -1192,10 +1208,20 @@ void sdl_ui_init_finalize(void)
 {
     unsigned int width = sdl_active_canvas->draw_buffer->canvas_width;
     unsigned int height = sdl_active_canvas->draw_buffer->canvas_height;
+    int minimized = 0;
+
+    /* unfortunately we cant create the window minimized in SDL1 */
+    resources_get_int("StartMinimized", &minimized);
 
     sdl_canvas_create(sdl_active_canvas, &width, &height); /* set the real canvas size */
+    /* minimize window after it was created */
+    if (minimized) {
+        SDL_WM_IconifyWindow();
+    }
+
     sdl_ui_finalized = 1;
-    ui_check_mouse_cursor();
+
+    mousedrv_mouse_changed();
 }
 
 int sdl_ui_get_mouse_state(int *px, int *py, unsigned int *pbuttons)
@@ -1240,4 +1266,16 @@ int sdl_ui_get_mouse_state(int *px, int *py, unsigned int *pbuttons)
 void sdl_ui_consume_mouse_event(SDL_Event *event)
 {
     /* This is a no-op on SDL1 */
+    ui_autohide_mouse_cursor();
+}
+
+void sdl_ui_set_window_title(char *title)
+{
+    char *dummy = NULL;
+    char *icon = NULL;
+
+    if (sdl_ui_finalized) {
+        SDL_WM_GetCaption(&dummy, &icon);
+        SDL_WM_SetCaption(title, icon);
+    }
 }

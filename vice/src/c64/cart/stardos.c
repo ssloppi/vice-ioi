@@ -61,6 +61,8 @@
 
     the second rom bank contains a kernal replacement. the necessary select
     signal comes from a clip that has to be installed inside of the c64.
+
+    the original EPROM has D1 and D2 swapped around.
 */
 
 /* #define DBGSTARDOS  */
@@ -212,35 +214,35 @@ static int stardos_dump(void)
 /* ---------------------------------------------------------------------*/
 
 static io_source_t stardos_io1_device = {
-    CARTRIDGE_NAME_STARDOS,
-    IO_DETACH_CART,
-    NULL,
-/*    0xde61, 0xde61, 0x01, */
-    0xde00, 0xdeff, 0xff,
-    0, /* read is never valid */
-    stardos_io1_store,
-    stardos_io1_read,
-    stardos_io_peek,
-    stardos_dump,
-    CARTRIDGE_STARDOS,
-    0,
-    0
+    CARTRIDGE_NAME_STARDOS, /* name of the device */
+    IO_DETACH_CART,         /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,  /* does not use a resource for detach */
+    0xde00, 0xdeff, 0xff,   /* range for the device, address is ignored, reg:$de00, mirrors:$de01-$deff */
+    0,                      /* read is never valid */
+    stardos_io1_store,      /* store function */
+    NULL,                   /* NO poke function */
+    stardos_io1_read,       /* read function */
+    stardos_io_peek,        /* peek function */
+    stardos_dump,           /* device state information dump function */
+    CARTRIDGE_STARDOS,      /* cartridge ID */
+    IO_PRIO_NORMAL,         /* normal priority, device read needs to be checked for collisions */
+    0                       /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_t stardos_io2_device = {
-    CARTRIDGE_NAME_STARDOS,
-    IO_DETACH_CART,
-    NULL,
-/*    0xdfa1, 0xdfa1, 0x01, */
-    0xdf00, 0xdfff, 0xff,
-    0, /* read is never valid */
-    stardos_io2_store,
-    stardos_io2_read,
-    stardos_io_peek,
-    stardos_dump,
-    CARTRIDGE_STARDOS,
-    0,
-    0
+    CARTRIDGE_NAME_STARDOS, /* name of the device */
+    IO_DETACH_CART,         /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,  /* does not use a resource for detach */
+    0xdf00, 0xdfff, 0xff,   /* range for the device, address is ignored, reg:$df00, mirrors:$df01-$dfff */
+    0,                      /* read is never valid */
+    stardos_io2_store,      /* store function */
+    NULL,                   /* NO poke function */
+    stardos_io2_read,       /* read function */
+    stardos_io_peek,        /* peek function */
+    stardos_dump,           /* device state information dump function */
+    CARTRIDGE_STARDOS,      /* cartridge ID */
+    IO_PRIO_NORMAL,         /* normal priority, device read needs to be checked for collisions */
+    0                       /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *stardos_io1_list_item = NULL;
@@ -299,7 +301,7 @@ void stardos_config_init(void)
 {
     flipflop();
     cap_trigger_access();
-    cart_config_changed_slotmain(2, 3, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_RAM, CMODE_ULTIMAX, CMODE_READ);
 }
 
 /* ---------------------------------------------------------------------*/
@@ -318,7 +320,7 @@ void stardos_config_setup(uint8_t *rawcart)
     memcpy(roml_banks, &rawcart[0], 0x2000);
     memcpy(romh_banks, &rawcart[0x2000], 0x2000);
 
-    cart_config_changed_slotmain(2, 3, CMODE_READ);
+    cart_config_changed_slotmain(CMODE_RAM, CMODE_ULTIMAX, CMODE_READ);
 }
 
 /* ---------------------------------------------------------------------*/
@@ -396,7 +398,7 @@ int stardos_snapshot_write_module(snapshot_t *s)
     }
 
     if (0
-        || (SMW_DW(m, stardos_alarm_time) < 0)
+        || (SMW_CLOCK(m, stardos_alarm_time) < 0)
         || (SMW_DW(m, (uint32_t)cap_voltage) < 0)
         || (SMW_B(m, (uint8_t)roml_enable) < 0)
         || (SMW_BA(m, roml_banks, 0x2000) < 0)
@@ -426,7 +428,7 @@ int stardos_snapshot_read_module(snapshot_t *s)
     }
 
     if (0
-        || (SMR_DW(m, &temp_clk) < 0)
+        || (SMR_CLOCK(m, &temp_clk) < 0)
         || (SMR_DW_INT(m, &cap_voltage) < 0)
         || (SMR_B_INT(m, &roml_enable) < 0)
         || (SMR_BA(m, roml_banks, 0x2000) < 0)

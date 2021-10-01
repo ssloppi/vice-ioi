@@ -1,4 +1,3 @@
-/* -*- Mode: c; tab-width: 8; indent-tabs-mode: 1; c-basic-offset: 8; -*- */
 /*
  * Copyright (c) 1993, 1994, 1995, 1996, 1997
  *	The Regents of the University of California.  All rights reserved.
@@ -37,21 +36,21 @@
 #ifndef lib_pcap_h
 #define lib_pcap_h
 
-#if defined(WIN32) || defined(__WATCOMC__) || defined(WATCOM_COMPILE)
+#if defined(WIN32)
 #include <pcap-stdinc.h>
-#else /* WIN32 */
+#else /* not WIN32 */
 #include <sys/types.h>
 #include <sys/time.h>
-#endif /* WIN32 */
+#endif /* not WIN32 */
 
 #include <net/bpf.h>
 
 #include <stdio.h>
 
 #ifdef REMOTE
-	// We have to define the SOCKET here, although it has been defined in sockutils.h
-	// This is to avoid the distribution of the 'sockutils.h' file around
-	// (for example in the WinPcap developer's pack)
+/* We have to define the SOCKET here, although it has been defined in sockutils.h
+   This is to avoid the distribution of the 'sockutils.h' file around
+   (for example in the WinPcap developer's pack) */
 #  ifndef SOCKET
 #    ifdef WIN32
 #      define SOCKET unsigned int

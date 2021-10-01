@@ -28,6 +28,8 @@
  *
  */
 
+#define DEBUGCART
+
 #include "vice.h"
 
 #include <stdio.h>
@@ -38,6 +40,7 @@
 #include "cartio.h"
 #include "cartridge.h"
 #include "cmdline.h"
+#include "crt.h"
 #include "export.h"
 #include "flash040.h"
 #include "lib.h"
@@ -56,6 +59,18 @@
 #include "vic20mem.h"
 #include "zfile.h"
 
+#ifdef DEBUGCART
+#define DBG(x) printf x
+#else
+#define DBG(x)
+#endif
+
+/*
+   UltiMem by Retro Innovations
+
+   see http://www.go4retro.com/products/ultimem/
+*/
+
 /* ------------------------------------------------------------------------- */
 /*
  * Cartridge RAM (512KiB or 1 MiB)
@@ -72,8 +87,9 @@ static uint8_t *cart_ram = NULL;
 static size_t cart_rom_size;
 static uint8_t *cart_rom = NULL;
 #define CART_ROM_SIZE_8M (8 << 20)
+#define CART_ROM_SIZE_16M (16 << 20)
 #define CART_ROM_SIZE_512K (512 << 10)
-#define CART_ROM_SIZE_MAX CART_ROM_SIZE_8M
+#define CART_ROM_SIZE_MAX CART_ROM_SIZE_16M
 
 #define ultimem_reg0_regs_disable 0x80
 #define ultimem_reg0_led 1
@@ -87,7 +103,7 @@ static uint8_t ultimem[17];
 
 /** Used bits in ultimem[] */
 static const uint8_t ultimem_mask[16] = {
-    ultimem_reg0_regs_disable | ultimem_reg0_led,
+    0xc7,
     0x3f, /* 00:IO3 config:IO2 config:RAM123 config */
     0xff, /* BLK5:BLK3:BLK2:BLK1 */
     0,
@@ -153,33 +169,35 @@ static void vic_um_io3_store(uint16_t addr, uint8_t value);
 static int vic_um_mon_dump(void);
 
 static io_source_t ultimem_io2 = {
-    CARTRIDGE_VIC20_NAME_UM,
-    IO_DETACH_CART,
-    "I/O2",
-    0x9800, 0x9bff, 0x3ff,
-    0,
-    vic_um_io2_store,
-    vic_um_io2_read,
-    vic_um_io2_peek,
-    NULL,
-    CARTRIDGE_VIC20_UM,
-    0,
-    0
+    CARTRIDGE_VIC20_NAME_UM, /* name of the device */
+    IO_DETACH_CART,          /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,   /* does not use a resource for detach */
+    0x9800, 0x9bff, 0x3ff,   /* range for the device, regs:$9800-$9bff */
+    0,                       /* read validity is determined by the device upon a read */
+    vic_um_io2_store,        /* store function */
+    NULL,                    /* NO poke function */
+    vic_um_io2_read,         /* read function */
+    vic_um_io2_peek,         /* peek function */
+    NULL,                    /* TODO: device state information dump function */
+    CARTRIDGE_VIC20_UM,      /* cartridge ID */
+    IO_PRIO_NORMAL,          /* normal priority, device read needs to be checked for collisions */
+    0                        /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_t ultimem_io3 = {
-    CARTRIDGE_VIC20_NAME_UM,
-    IO_DETACH_CART,
-    "I/O3",
-    0x9c00, 0x9fff, 0x3ff,
-    0,
-    vic_um_io3_store,
-    vic_um_io3_read,
-    vic_um_io3_peek,
-    vic_um_mon_dump,
-    CARTRIDGE_VIC20_UM,
-    0,
-    0
+    CARTRIDGE_VIC20_NAME_UM, /* name of the device */
+    IO_DETACH_CART,          /* use cartridge ID to detach the device when involved in a read-collision */
+    IO_DETACH_NO_RESOURCE,   /* does not use a resource for detach */
+    0x9c00, 0x9fff, 0x3ff,   /* range for the device, regs:$9c00-$9fff */
+    0,                       /* read validity is determined by the device upon a read */
+    vic_um_io3_store,        /* store function */
+    NULL,                    /* NO poke function */
+    vic_um_io3_read,         /* read function */
+    vic_um_io3_peek,         /* peek function */
+    vic_um_mon_dump,         /* device state information dump function */
+    CARTRIDGE_VIC20_UM,      /* cartridge ID */
+    IO_PRIO_NORMAL,          /* normal priority, device read needs to be checked for collisions */
+    0                        /* insertion order, gets filled in by the registration function */
 };
 
 static io_source_list_t *io2_list_item = NULL;
@@ -525,6 +543,9 @@ static void vic_um_io3_store(uint16_t addr, uint8_t value)
         switch (addr) {
             case 0:
                 value |= ultimem_reset[0];
+                if (value & 0x40) {
+                    machine_trigger_reset(MACHINE_RESET_MODE_HARD);
+                }
                 break;
             case 3:
                 return; /* not writable */
@@ -570,20 +591,98 @@ void vic_um_init(void)
 void vic_um_reset(void)
 {
     flash040core_reset(&flash_state);
-    memcpy(ultimem, ultimem_reset, sizeof ultimem);
-    switch (cart_rom_size) {
-        case CART_ROM_SIZE_8M:
-            ultimem[3] = ultimem_reg3_8m;
-            break;
-        case CART_ROM_SIZE_512K:
-            ultimem[3] = ultimem_reg3_512k;
-            break;
+    if (ultimem[0] & 0x40) {
+        /* soft reset triggered by write to $9ff0 */
+        ultimem[0] &= ~0x40;
+    } else {
+        memcpy(ultimem, ultimem_reset, sizeof ultimem);
+        switch (cart_rom_size) {
+            case CART_ROM_SIZE_8M:
+                ultimem[3] = ultimem_reg3_8m;
+                break;
+            case CART_ROM_SIZE_512K:
+                ultimem[3] = ultimem_reg3_512k;
+                break;
+        }
     }
 }
 
 void vic_um_config_setup(uint8_t *rawcart)
 {
+    memcpy(ultimem, ultimem_reset, sizeof ultimem);
 }
+
+int vic_um_crt_attach(FILE *fd, uint8_t *rawcart)
+{
+    crt_chip_header_t chip;
+    int idx = 0;
+
+    /* util_string_set(&cartfile, filename); */ /* FIXME */
+
+    if (!cart_ram) {
+        cart_ram = lib_malloc(CART_RAM_SIZE_MAX);
+    }
+
+    if (!cart_rom) {
+        cart_rom = lib_malloc(CART_ROM_SIZE_MAX);
+    }
+
+    cart_rom_size = 0;
+
+    for (idx = 0; idx < 2048; idx++) {
+        if (crt_read_chip_header(&chip, fd)) {
+            break;
+        }
+
+        DBG(("chip %d at %02x len %02x\n", idx, chip.start, chip.size));
+        if (chip.size != 0x2000) {
+            goto exiterror;
+        }
+
+        if (crt_read_chip(&cart_rom[0x2000 * idx], 0, &chip, fd)) {
+            goto exiterror;
+        }
+        cart_rom_size += 0x2000;
+    }
+
+    switch (cart_rom_size) {
+        case CART_ROM_SIZE_16M:
+            /* FIXME: is this correct? */
+            cart_ram_size = CART_RAM_SIZE_1M;
+            break;
+        case CART_ROM_SIZE_8M:
+            cart_ram_size = CART_RAM_SIZE_1M;
+            break;
+        case CART_ROM_SIZE_512K:
+            cart_ram_size = CART_RAM_SIZE_512K;
+            break;
+        default:
+            goto exiterror;
+    }
+
+    if (export_add(&export_res) < 0) {
+        goto exiterror;
+    }
+
+    flash040core_init(&flash_state, maincpu_alarm_context,
+                      (cart_rom_size == CART_ROM_SIZE_512K) ? FLASH040_TYPE_B : FLASH040_TYPE_064,
+                      cart_rom);
+
+    mem_cart_blocks = VIC_CART_RAM123 |
+                      VIC_CART_BLK1 | VIC_CART_BLK2 | VIC_CART_BLK3 | VIC_CART_BLK5 |
+                      VIC_CART_IO2 | VIC_CART_IO3;
+    mem_initialize_memory();
+
+    io2_list_item = io_source_register(&ultimem_io2);
+    io3_list_item = io_source_register(&ultimem_io3);
+
+    return 0;
+
+exiterror:
+    vic_um_detach();
+    return -1;
+}
+
 
 int vic_um_bin_attach(const char *filename)
 {
@@ -598,6 +697,10 @@ int vic_um_bin_attach(const char *filename)
     cart_rom_size = util_file_length(fd);
 
     switch (cart_rom_size) {
+        case CART_ROM_SIZE_16M:
+            /* FIXME: is this correct? */
+            cart_ram_size = CART_RAM_SIZE_1M;
+            break;
         case CART_ROM_SIZE_8M:
             cart_ram_size = CART_RAM_SIZE_1M;
             break;
@@ -647,7 +750,7 @@ int vic_um_bin_attach(const char *filename)
 
 void vic_um_detach(void)
 {
-    int n = 0;
+    long n = 0;
     FILE *fd;
 
     /* try to write back cartridge contents if write back is enabled
@@ -753,8 +856,8 @@ int vic_um_snapshot_write_module(snapshot_t *s)
 
     if (0
         || (SMW_BA(m, ultimem, sizeof ultimem) < 0)
-        || (SMW_BA(m, cart_ram, cart_ram_size) < 0)
-        || (SMW_BA(m, cart_rom, cart_rom_size) < 0)) {
+        || (SMW_BA(m, cart_ram, (unsigned int)cart_ram_size) < 0)
+        || (SMW_BA(m, cart_rom, (unsigned int)cart_rom_size) < 0)) {
         snapshot_module_close(m);
         return -1;
     }
@@ -814,8 +917,8 @@ int vic_um_snapshot_read_module(snapshot_t *s)
     }
 
     if (0
-        || (SMR_BA(m, cart_ram, cart_ram_size) < 0)
-        || (SMR_BA(m, cart_rom, cart_rom_size) < 0)) {
+        || (SMR_BA(m, cart_ram, (unsigned int)cart_ram_size) < 0)
+        || (SMR_BA(m, cart_rom, (unsigned int)cart_rom_size) < 0)) {
         goto snapshot_error;
     }
 

@@ -25,10 +25,12 @@
  *
  */
 
+
 #ifndef VICE_ARCHDEP_DEFS_H
 #define VICE_ARCHDEP_DEFS_H
 
 #include "vice.h"
+#include <inttypes.h>
 
 
 /** \brief  Various OS-identification macros
@@ -45,13 +47,8 @@
  *      ARCHDEP_OS_BSD_NET
  *      ARCHDEP_OS_BSD_OPEN
  *      ARCHDEP_OS_BSD_DRAGON
- *    ARCHDEP_OS_QNX (?)
- *    ARCHDEP_OS_SOLARIS (?)
  *  ARCHDEP_OS_WINDOWS
- *  ARCHDEP_OS_OS2 (?)
  *  ARCHDEP_OS_BEOS
- *  ARCHDEP_OS_MSDOS (?)
- *  ARCHDEP_OS_AMIGA
  * </pre>
  */
 #ifdef UNIX_COMPILE
@@ -61,8 +58,8 @@
 
 # if defined(MACOSX_SUPPORT)
 
-/** \brief  OS is Unix and OSX */
-#  define ARCHDEP_OS_OSX
+/** \brief  OS is Unix and MacOS */
+#  define ARCHDEP_OS_MACOS
 
 # elif defined(__linux__)
 
@@ -96,27 +93,12 @@
 /** \brief  OS is DragonFly BSD */
 #  define ARCHDEP_OS_BSD_DRAGON
 
-# elif defined(__QNX__)
-
-/**\brief   OS is QNX (do we even support this anymore?) */
-#  define ARCHDEP_OS_QNX
-
-# elif defined(sun) || defined(__sun)
-
-/** \brief  OS is Solaris (same question) */
-#  define ARCHDEP_OS_SOLARIS
-
 # endif /* ifdef UNIX_COMPILE */
 
 #elif defined(WIN32_COMPILE)
 
 /** \brief  OS is Windows */
 # define ARCHDEP_OS_WINDOWS
-
-#elif defined(OS2_COMPILE)
-
-/** \brief  OS is OS/2 (again: has anyone even tested this?) */
-# define ARCHDEP_OS_OS2
 
 #elif defined(BEOS_COMPILE)
 
@@ -135,25 +117,12 @@
 
 # endif /* ifdef BEOS_COMPILE */
 
-#elif defined(MSDOS) || defined(_MSDOS) || defined(__MSDOS__) || defined(__DOS__)
-
-/** \brief  OS is MS-DOS (really?) */
-# define ARCHDEP_OS_DOS
-
-#elif defined(AMIGA_SUPPORT)
-
-/** \brief  OS is AmigaOS
- *
- * May have to split/refine this for AROS etc
- */
-# define ARCHDEP_OS_AMIGA
 #endif
 
 
 /** \brief  Arch-dependent directory separator used in paths
  */
-#if defined(ARCHDEP_OS_WINDOWS) || defined(ARCHDEP_OS_OS2) \
-    || defined(ARCHDEP_OS_DOS)
+#if defined(ARCHDEP_OS_WINDOWS)
 
 /** \brief  OS-dependent directory separator
  */
@@ -164,11 +133,10 @@
 
 /** \brief  Extension used for autostart disks
  */
-#define ARCHDEP_AUTOSTART_DICK_EXTENSION    "d64"
+#define ARCHDEP_AUTOSTART_DISK_EXTENSION    "d64"
 
 
-#if defined(ARCHEP_OS_AMIGA) || defined(ARCHDEP_OS_MSDOS) \
-    || defined(ARCHDEP_OS_OS2) || defined(ARCHDEP_OS_WINDOWS)
+#if defined(ARCHDEP_OS_WINDOWS)
 /** \brief  Separator used for a pathlist
  */
 # define ARCHDEP_FINDPATH_SEPARATOR_STRING  ";"
@@ -181,21 +149,27 @@
 #endif
 
 
-/* set LIBDIR and DOCDIR */
-#ifdef ARCHDEP_OS_UNIX
-/** \brief  Set VICE library dir
+/** \brief  XDG Base Directory Specifiction user cache dir
  *
- * This is completely wrong
+ * This defines only the final element of the `XDG_CACHE_HOME` variable.
  */
-# define LIBDIR VICEDIR
+#define ARCHDEP_XDG_CACHE_HOME  ".cache"
 
-/** 'brief  Set documentation dir
+
+/** \brief  XDG Base Directory Specifiction user config dir
  *
- * Equally wrong, we should use XDG
+ * This defines only the final element of `the XDG_CONFIG_HOME` variable.
  */
-# define DOCDIR LIBDIR "/doc"
-#endif
+#define ARCHDEP_XDG_CONFIG_HOME ".config"
 
+
+/** \def    ARCHDEP_VICERC_NAME
+ * \brief   The name of the default VICE configuraton file
+ */
+
+/** \def    ARCHDEP_VICE_RTC_NAME
+ * \brief   The name of the default VICE RTC status file
+ */
 
 /*
  * Determine if we compile against SDL
@@ -204,8 +178,8 @@
 # define ARCHDEP_USE_SDL
 #endif
 
-#if defined(ARCHDEP_OS_WINDOWS) || defined(ARCHDEP_OS_OS2) \
-    || defined(ARCHDEP_OS_MSDOS) || defined(ARCHDEP_OS_BEOS)
+#if defined(ARCHDEP_OS_WINDOWS) \
+    || defined(ARCHDEP_OS_BEOS)
 # ifdef ARCHDEP_USE_SDL
 #  define ARCHDEP_VICERC_NAME   "sdl-vice.ini"
 /* Just copying stuff, I'm backwards */
@@ -232,5 +206,62 @@
  */
 #define ARCHDEP_AUTOSTART_DISKIMAGE_SUFFIX  ".d64"
 
+
+/* Declare extra printf specifiers for Windows since Microsoft's support for
+ * C99 fucking sucks.
+ *
+ * This declares PRI_SIZE_T and PRI_SSIZE_T for use on all platforms,
+ * aliasing to 'zu'/'z' on anything not Windows, and using PRI[d|u][32|64] on
+ * Windows.
+ */
+
+/** \def    PRI_SIZE_T
+ * \brief   Printf type specifier alias for 'zu'
+ *
+ * Required to work around Microsoft's broken C99 support.
+ */
+
+/** \def    PRI_SSIZE_T
+ * \brief   Printf type specifier alias for 'zd'
+ *
+ * Required to work around Microsoft's broken C99 support.
+ */
+
+#ifdef _WIN32
+# define PRI_SIZE_T     "Iu"
+# define PRI_SSIZE_T    "Id"
+#else
+# define PRI_SIZE_T     "zu"
+# define PRI_SSIZE_T    "zd"
+#endif
+
+/** \def    GULONG_TO_POINTER
+ * \brief   Cast gulong to pointer
+ *
+ * GLib appears to be "missing" this macro, so we define it here.
+ *
+ * \param[in]   ul  gulong value
+ *
+ * \return  gpointer
+ */
+
+#ifndef GULONG_TO_POINTER
+# define GULONG_TO_POINTER(ul) (gpointer)(uintptr_t)(ul)
+#endif
+
+
+/** \def    GPOINTER_TO_ULONG
+ * \brief   Cast pointer to gulong
+ *
+ * GLib appears to be "missing" this macro, so we define it here.
+ *
+ * \param[in]   p   gpointer
+ *
+ * \return  gulong
+ */
+
+#ifndef GPOINTER_TO_ULONG
+# define GPOINTER_TO_ULONG(p) (gulong)(uintptr_t)(p)
+#endif
 
 #endif

@@ -101,7 +101,7 @@ static GtkWidget *create_content_widget(void)
 
     for (i = 0; i < num_options; i++) {
         char *name;
-        char *param;
+        const char *param;
         char *desc;
 
         name = cmdline_options_get_name(i);
@@ -140,14 +140,16 @@ static GtkWidget *create_content_widget(void)
  *
  * \param[in]   widget      parent widget (unused)
  * \param[in]   user_data   extra data (unused)
+ *
+ * \return  TRUE
  */
-void uicmdline_dialog_show(GtkWidget *widget, gpointer user_data)
+gboolean uicmdline_dialog_show(GtkWidget *widget, gpointer user_data)
 {
     GtkWidget *dialog;
     GtkWidget *content;
     gchar title[256];
 
-    g_snprintf(title, 256, "%s command line options", machine_name);
+    g_snprintf(title, sizeof(title), "%s command line options", machine_name);
 
     dialog = gtk_dialog_new_with_buttons(title,
             ui_get_active_window(),
@@ -159,6 +161,7 @@ void uicmdline_dialog_show(GtkWidget *widget, gpointer user_data)
     gtk_box_pack_start(GTK_BOX(content), create_content_widget(),
             TRUE, TRUE, 0);
 
-    g_signal_connect(dialog, "response", G_CALLBACK(on_response), NULL);
+    g_signal_connect_unlocked(dialog, "response", G_CALLBACK(on_response), NULL);
     gtk_widget_show_all(dialog);
+    return TRUE;
 }

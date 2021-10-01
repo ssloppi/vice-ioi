@@ -50,7 +50,8 @@ int fsimage_read_p64_image(const disk_image_t *image)
 {
     TP64MemoryStream P64MemoryStreamInstance;
     PP64Image P64Image = (void*)image->p64;
-    int lSize, rc;
+    int rc;
+    size_t lSize;
     void *buffer;
 
     fsimage_t *fsimage;
@@ -68,7 +69,7 @@ int fsimage_read_p64_image(const disk_image_t *image)
     /*num_tracks = image->tracks;*/
 
     P64MemoryStreamCreate(&P64MemoryStreamInstance);
-    P64MemoryStreamWrite(&P64MemoryStreamInstance, buffer, lSize);
+    P64MemoryStreamWrite(&P64MemoryStreamInstance, buffer, (p64_uint32_t)lSize);
     P64MemoryStreamSeek(&P64MemoryStreamInstance, 0);
     if (P64ImageReadFromStream(P64Image, &P64MemoryStreamInstance)) {
         rc = 0;
@@ -129,7 +130,9 @@ int fsimage_p64_read_half_track(const disk_image_t *image, unsigned int half_tra
     }
 
     if (half_track > 84) {
-        log_error(fsimage_p64_log, "Half track %i out of bounds.  Cannot read P64 track.", half_track);
+        log_error(fsimage_p64_log,
+                "Half track %u out of bounds.  Cannot read P64 track.",
+                half_track);
         return -1;
     }
 
@@ -166,7 +169,9 @@ int fsimage_p64_write_half_track(disk_image_t *image, unsigned int half_track,
     }
 
     if (half_track > 84) {
-        log_error(fsimage_p64_log, "Half track %i out of bounds.  Cannot write P64 track.", half_track);
+        log_error(fsimage_p64_log,
+                "Half track %u out of bounds.  Cannot write P64 track.",
+                half_track);
         return -1;
     }
     if (raw->data == NULL) {
@@ -175,7 +180,11 @@ int fsimage_p64_write_half_track(disk_image_t *image, unsigned int half_track,
 
     P64PulseStreamConvertFromGCR(&P64Image->PulseStreams[0][half_track], (void*)raw->data, raw->size << 3);
 
+    return 0;
+    /* image flush will happen on close; added by Roberto Muscedere on 20210125 */
+#if 0
     return fsimage_write_p64_image(image);
+#endif
 }
 
 static int fsimage_p64_write_track(disk_image_t *image, unsigned int track,
@@ -189,13 +198,19 @@ static int fsimage_p64_write_track(disk_image_t *image, unsigned int track,
     }
 
     if (track > 42) {
-        log_error(fsimage_p64_log, "Track %i out of bounds.  Cannot write P64 track.", track);
+        log_error(fsimage_p64_log,
+                "Track %u out of bounds.  Cannot write P64 track.",
+                track);
         return -1;
     }
 
     P64PulseStreamConvertFromGCR(&P64Image->PulseStreams[0][track << 1], (void*)gcr_track_start_ptr, gcr_track_size << 3);
 
+    return 0;
+    /* image flush will happen on close; added by Roberto Muscedere on 20210125 */
+#if 0
     return fsimage_write_p64_image(image);
+#endif
 }
 
 /*-----------------------------------------------------------------------*/
@@ -208,7 +223,9 @@ int fsimage_p64_read_sector(const disk_image_t *image, uint8_t *buf,
     disk_track_t raw;
 
     if (dadr->track > 42) {
-        log_error(fsimage_p64_log, "Track %i out of bounds.  Cannot read P64 track.", dadr->track);
+        log_error(fsimage_p64_log,
+                "Track %u out of bounds.  Cannot read P64 track.",
+                dadr->track);
         return -1;
     }
 
@@ -222,7 +239,9 @@ int fsimage_p64_read_sector(const disk_image_t *image, uint8_t *buf,
     rf = gcr_read_sector(&raw, buf, (uint8_t)dadr->sector);
     lib_free(raw.data);
     if (rf != CBMDOS_FDC_ERR_OK) {
-        log_error(fsimage_p64_log, "Cannot find track: %i sector: %i within P64 image.", dadr->track, dadr->sector);
+        log_error(fsimage_p64_log,
+                "Cannot find track: %u sector: %u within P64 image.",
+                dadr->track, dadr->sector);
         switch (rf) {
             case CBMDOS_FDC_ERR_HEADER:
                 return CBMDOS_IPE_READ_ERROR_BNF; /* 20 */
@@ -263,24 +282,32 @@ int fsimage_p64_write_sector(disk_image_t *image, const uint8_t *buf,
     disk_track_t raw;
 
     if (dadr->track > 42) {
-        log_error(fsimage_p64_log, "Track %i out of bounds.  Cannot write P64 sector", dadr->track);
+        log_error(fsimage_p64_log,
+                "Track %u out of bounds.  Cannot write P64 sector",
+                dadr->track);
         return -1;
     }
 
     if (fsimage_p64_read_track(image, dadr->track, &raw) < 0
         || raw.data == NULL) {
-        log_error(fsimage_p64_log, "Cannot read track %i from P64 image.", dadr->track);
+        log_error(fsimage_p64_log,
+                "Cannot read track %u from P64 image.",
+                dadr->track);
         return -1;
     }
 
     if (gcr_write_sector(&raw, buf, (uint8_t)dadr->sector) != CBMDOS_FDC_ERR_OK) {
-        log_error(fsimage_p64_log, "Could not find track %i sector %i in disk image", dadr->track, dadr->sector);
+        log_error(fsimage_p64_log,
+                "Could not find track %u sector %u in disk image",
+                dadr->track, dadr->sector);
         lib_free(raw.data);
         return -1;
     }
 
     if (fsimage_p64_write_track(image, dadr->track, raw.size, raw.data) < 0) {
-        log_error(fsimage_p64_log, "Failed writing track %i to disk image.", dadr->track);
+        log_error(fsimage_p64_log,
+                "Failed writing track %u to disk image.",
+                dadr->track);
         lib_free(raw.data);
         return -1;
     }

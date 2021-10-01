@@ -30,6 +30,7 @@
 #include "vice.h"
 #include <gtk/gtk.h>
 
-GtkWidget * kbdmapping_widget_create(GtkWidget *widget);
+GtkWidget * kbdmapping_widget_create(GtkWidget *parent);
+void        kbdmapping_widget_update(void);
 
 #endif

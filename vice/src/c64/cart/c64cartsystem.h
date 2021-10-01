@@ -72,6 +72,7 @@ extern int cart_resources_init(void);
 extern void cart_resources_shutdown(void);
 extern int cart_cmdline_options_init(void);
 
+extern int cart_can_get_file_name(int type);
 extern const char *cart_get_file_name(int type);
 extern int cart_is_slotmain(int type); /* returns 1 if cart of given type is in "Main Slot" */
 extern int cart_type_enabled(int type);
@@ -89,10 +90,10 @@ extern void cart_reset_memptr(void);
 /* mode_phiN bit 0,1 control exrom/game */
 
 /* FIXME: EXROM is inverted in these constants, while GAME is not */
-#define CMODE_8KGAME 0
-#define CMODE_16KGAME 1
-#define CMODE_RAM 2
-#define CMODE_ULTIMAX 3
+#define CMODE_8KGAME    0
+#define CMODE_16KGAME   1
+#define CMODE_RAM       2
+#define CMODE_ULTIMAX   3
 
 extern const char *cart_config_string(uint8_t mode); /* convert above mode into human readable string */
 

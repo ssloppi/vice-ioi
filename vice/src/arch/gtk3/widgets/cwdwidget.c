@@ -31,11 +31,10 @@
 #include <gtk/gtk.h>
 #include <glib/gstdio.h>
 
-#include "lib.h"
-#include "widgethelpers.h"
 #include "debug_gtk3.h"
+#include "lib.h"
 #include "resources.h"
-#include "selectdirectorydialog.h"
+#include "vice_gtk3.h"
 
 #include "cwdwidget.h"
 
@@ -54,9 +53,25 @@ static void on_entry_changed(GtkWidget *widget, gpointer user_data)
 {
     const char *cwd = gtk_entry_get_text(GTK_ENTRY(widget));
 
-    debug_gtk3("setting cwd to '%s'.", cwd);
     /* TODO: make the entry background 'red' or so when chdir() fails */
     g_chdir(cwd);
+}
+
+
+
+/** \brief  Callback for the directory-select dialog
+ *
+ * \param[in]   dialog      directory-select dialog
+ * \param[in]   filename    filename (NULL if canceled)
+ * \param[in]   param       extra data (unused)
+ */
+static void browse_callback(GtkDialog *dialog, gchar *filename, gpointer param)
+{
+    if (filename != NULL) {
+        gtk_entry_set_text(GTK_ENTRY(entry), filename);
+        g_free(filename);
+    }
+    gtk_widget_destroy(GTK_WIDGET(dialog));
 }
 
 
@@ -67,6 +82,21 @@ static void on_entry_changed(GtkWidget *widget, gpointer user_data)
  */
 static void on_browse_clicked(GtkWidget *widget, gpointer user_data)
 {
+    GtkWidget *dialog;
+
+    /* TODO: set CWD */
+
+    dialog = vice_gtk3_select_directory_dialog(
+            "Select directory",
+            NULL,
+            TRUE,
+            NULL,
+            browse_callback,
+            NULL);
+    gtk_widget_show(dialog);
+
+
+    #if 0
     gchar *filename;
 
     filename = vice_gtk3_select_directory_dialog("Select directory",
@@ -74,21 +104,26 @@ static void on_browse_clicked(GtkWidget *widget, gpointer user_data)
     if (filename != NULL) {
         gtk_entry_set_text(GTK_ENTRY(entry), filename);
     }
+#endif
 }
-
 
 
 /** \brief  Create widget to change the current working directory
  *
+ * \param[in]   parent  parent widget (unused)
+ *
  * \return  GtkGrid
  */
-GtkWidget *cwd_widget_create(void)
+GtkWidget *cwd_widget_create(GtkWidget *parent)
 {
     GtkWidget *grid;
     GtkWidget *wrapper;
     GtkWidget *browse;
 
-    grid = uihelpers_create_grid_with_label("Current working directory", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(
+            -1, -1,
+            "Current working directory",
+            1);
 
     wrapper = gtk_grid_new();
     g_object_set(wrapper, "margin", 8, NULL);

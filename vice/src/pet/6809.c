@@ -5964,7 +5964,7 @@ void cpu6809_reset (void)
 
 static char snap_module_name[] = "CPU6809";
 #define SNAP_MAJOR 1
-#define SNAP_MINOR 0
+#define SNAP_MINOR 1
 
 int cpu6809_snapshot_write_module(snapshot_t *s)
 {
@@ -5981,7 +5981,7 @@ int cpu6809_snapshot_write_module(snapshot_t *s)
     EXPORT_REGISTERS();
 
     if (0
-        || SMW_DW(m, maincpu_clk) < 0
+        || SMW_CLOCK(m, maincpu_clk) < 0
         || SMW_W(m, GLOBAL_REGS.reg_x) < 0
         || SMW_W(m, GLOBAL_REGS.reg_y) < 0
         || SMW_W(m, GLOBAL_REGS.reg_u) < 0
@@ -6038,7 +6038,7 @@ int cpu6809_snapshot_read_module(snapshot_t *s)
 {
     uint8_t major, minor;
     snapshot_module_t *m;
-    uint32_t my_maincpu_clk;
+    CLOCK my_maincpu_clk;
     uint16_t v;
     uint8_t e, f, md;
 
@@ -6051,13 +6051,13 @@ int cpu6809_snapshot_read_module(snapshot_t *s)
     }
 
     /* Do not accept versions higher than current */
-    if (major > SNAP_MAJOR || minor > SNAP_MINOR) {
+    if (snapshot_version_is_bigger(major, minor, SNAP_MAJOR, SNAP_MINOR)) {
         snapshot_set_error(SNAPSHOT_MODULE_HIGHER_VERSION);
         goto fail;
     }
 
     if (0
-        || SMR_DW(m, &my_maincpu_clk) < 0
+        || SMR_CLOCK(m, &my_maincpu_clk) < 0
         || SMR_W(m, &GLOBAL_REGS.reg_x) < 0
         || SMR_W(m, &GLOBAL_REGS.reg_y) < 0
         || SMR_W(m, &GLOBAL_REGS.reg_u) < 0

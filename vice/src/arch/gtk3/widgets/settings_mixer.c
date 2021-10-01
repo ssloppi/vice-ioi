@@ -1,7 +1,7 @@
 /** \file   settings_mixer.c
  * \brief   GTK3 Sound Mixer settings
  *
- * Settings UI widget to control volume and ReSID settings
+ * Settings UI widget to control volume and ReSID settings.
  *
  * \author  Bas Wassink <b.wassink@ziggo.nl>
  */
@@ -30,7 +30,6 @@
 #include "vice.h"
 
 #include <gtk/gtk.h>
-
 #include "vice_gtk3.h"
 #include "resources.h"
 #include "lib.h"
@@ -40,10 +39,9 @@
 #include "settings_mixer.h"
 
 
-
 /** \brief  Create a mixer widget for the settings UI
  *
- * \param[in]   parent  parent widget (ignored)
+ * \param[in]   parent  parent widget (unused)
  *
  * \return  GtkGrid
  */
@@ -57,6 +55,7 @@ GtkWidget *settings_mixer_widget_create(GtkWidget *parent)
             mixer_widget_create(FALSE, GTK_ALIGN_START),
             0, 0, 1, 1);
 
+    mixer_widget_sid_type_changed();
     gtk_widget_show_all(grid);
     return grid;
 }

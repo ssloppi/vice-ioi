@@ -29,6 +29,7 @@
 #include <gtk/gtk.h>
 
 #include "lib.h"
+#include "log.h"
 #include "util.h"
 
 #include "filechooserhelpers.h"
@@ -58,11 +59,24 @@ const char *file_chooser_pattern_cart[] = {
  */
 const char *file_chooser_pattern_disk[] = {
     "*.[dD]64",     "*.[dD]67",     "*.[dD]71",     "*.[dD]8[0-2]",
-    "*.[dD]1[mM]",  "*.[dD]2[mM]",  "*.[dD]4[mM]",
+    "*.[dD]1[mM]",  "*.[dD]2[mM]",  "*.[dD]4[mM]",  "*.[dD][hH][dD]",
     "*.[gG]64",     "*.[gG]71",     "*.[gG]41",     "*.[pP]64",
+#ifdef HAVE_X64_IMAGE
     "*.[xX]64",
+#endif
     NULL
 };
+
+
+/** \brief  Patterns for disk images (non-GCR floppies only)
+ *
+ * Used in the AutostartPrgDiskImage widget
+ */
+const char *file_chooser_pattern_floppy[] = {
+    "*.[dD]64",     "*.[dD]67",     "*.[dD]71",     "*.[dD]8[0-2]",
+    NULL
+};
+
 
 
 /** \brief  Patterns for tapes
@@ -77,21 +91,22 @@ const char *file_chooser_pattern_tape[] = {
 /** \brief  Patterns for fliplists
  */
 const char *file_chooser_pattern_fliplist[] = {
-    "*.[vV[fF][lL]", NULL
+    "*.[vV][fF][lL]", "*.[lL][sS][tT]", NULL
 };
 
 /** \brief  Patterns for program files
  */
 const char *file_chooser_pattern_program[] = {
-    "*.[pP][rR]gG]", "*.[pP][0-9][0-9]", NULL
+    "*.[pP][rR][gG]", "*.[pP][0-9][0-9]", NULL
 };
 
 
-/** \brief  Patterns for PSID/SID files
+/** \brief  Patterns for PSID/SID/MUS files
  */
 const char *file_chooser_pattern_sid[] = {
     "*.[sD][iI][dD]",
     "*.[pP][sD][iI][dD]",
+    "*.[mM][uU][sS]",
     NULL
 };
 
@@ -131,51 +146,61 @@ const char *file_chooser_pattern_snapshot [] = {
  * 'Stock' filters, for convenience
  */
 
+/** \brief  Filter for all files */
 const ui_file_filter_t file_chooser_filter_all = {
     "All files",
     file_chooser_pattern_all
 };
 
+/** \brief  Filter for cartridge images */
 const ui_file_filter_t file_chooser_filter_cart = {
     "Cartridge images",
     file_chooser_pattern_cart
 };
 
+/** \brief  Filter for disk images */
 const ui_file_filter_t file_chooser_filter_disk = {
     "Disk images",
     file_chooser_pattern_disk
 };
 
+/** \brief  Filter for tape images */
 const ui_file_filter_t file_chooser_filter_tape = {
     "Tape images",
     file_chooser_pattern_tape
 };
 
+/** \brief  Filter for SID files */
 const ui_file_filter_t file_chooser_filter_sid = {
     "PSID/SID files",
     file_chooser_pattern_sid
 };
 
+/** \brief  Filter for fliplist files */
 const ui_file_filter_t file_chooser_filter_fliplist = {
     "Flip lists",
     file_chooser_pattern_fliplist
 };
 
+/** \brief  Filter for program files */
 const ui_file_filter_t file_chooser_filter_program = {
     "Program files",
     file_chooser_pattern_program
 };
 
+/** \brief  Filter for archives */
 const ui_file_filter_t file_chooser_filter_archive = {
     "Archive files",
     file_chooser_pattern_archive
 };
 
+/** \brief  Filter for compressed files */
 const ui_file_filter_t file_chooser_filter_compressed = {
     "Compressed files",
     file_chooser_pattern_compressed
 };
 
+/** \brief  Filter for snapshot files */
 const ui_file_filter_t file_chooser_filter_snapshot = {
     "Snapshot files",
     file_chooser_pattern_snapshot
@@ -185,18 +210,19 @@ const ui_file_filter_t file_chooser_filter_snapshot = {
 
 /** \brief  Create a GtkFileFilter instance from \a filter
  *
- * \param[in]   filter  name and patterns for the filter
+ * \param[in]   filter      name and patterns for the filter
+ * \param[in]   show_globs  show file globbing pattern in the filter description
  *
  * Example:
  * \code{.c}
  *  const ui_file_filter_t data = {
  *      "disk image",
- *      { "*.d64", "*.d71", "*.d8[0-2]", NULL }
+ *      { "*.d64", "*.d71", "*.d8[0-2]", "*.dhd", NULL }
  *  };
  *  GtkFileFilter *filter = create_file_chooser_filter(data);
  * \endcode
  *
- * \return  a new GtkFileFilter instance
+ * \return  GtkFileFilter
  */
 GtkFileFilter *create_file_chooser_filter(const ui_file_filter_t filter,
                                           gboolean show_globs)
@@ -211,7 +237,7 @@ GtkFileFilter *create_file_chooser_filter(const ui_file_filter_t filter,
         name = util_concat(filter.name, " (", globs, ")", NULL);
         lib_free(globs);
     } else {
-        name = lib_stralloc(filter.name);
+        name = lib_strdup(filter.name);
     }
 
     ff = gtk_file_filter_new();
@@ -227,3 +253,60 @@ GtkFileFilter *create_file_chooser_filter(const ui_file_filter_t filter,
     return ff;
 }
 
+
+/** \brief  Convert UTF-8 encoded string \a text to the current locale
+ *
+ * \param[in]   text    UTF-8 encoded string
+ *
+ * \return  \a text encoded to the locale, or the original string on failure
+ *
+ * \note    the result must be freed after use with g_free()
+ */
+gchar *file_chooser_convert_to_locale(const gchar *text)
+{
+    GError *err = NULL;
+    gsize br;
+    gsize bw;
+    gchar *result;
+
+    result = g_locale_from_utf8(text, -1, &br, &bw, &err);
+    if (result == NULL) {
+        log_warning(LOG_DEFAULT,
+                "warning: failed to convert string to locale: %s",
+                err->message);
+        result = g_strdup(text);
+        if (err != NULL) {
+            g_error_free(err);
+        }
+    }
+    return result;
+}
+
+
+/** \brief  Convert locale encoded string \a text to UTF-8
+ *
+ * \param[in]   text    string in the current locale
+ *
+ * \return  \a text encoded to UTF-8, or the original string on failure
+ *
+ * \note    the result must be freed after use with g_free()
+ */
+gchar *file_chooser_convert_from_locale(const gchar *text)
+{
+    GError *err = NULL;
+    gsize br;
+    gsize bw;
+    gchar *result;
+
+    result = g_locale_to_utf8(text, -1, &br, &bw, &err);
+    if (result == NULL) {
+        log_warning(LOG_DEFAULT,
+                "warning: failed to convert string to UTF-8: %s",
+                err->message);
+        result = g_strdup(text);
+        if (err != NULL) {
+            g_error_free(err);
+        }
+    }
+    return result;
+}

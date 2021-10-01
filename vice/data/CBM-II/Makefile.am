@@ -1,4 +1,4 @@
-cbm2dir = $(VICEDIR)/CBM-II
+cbm2dir = $(VICE_DATADIR)/CBM-II
 
 roms = \
 	basic.128 \
@@ -35,6 +35,8 @@ palettes = \
 	cjam.vpl \
 	rgb.vpl \
 	vice.vpl \
+	palette.vpl \
+	pixcen.vpl \
 	amber.vpl \
 	green.vpl \
 	white.vpl

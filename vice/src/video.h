@@ -29,6 +29,10 @@
 
 #include "types.h"
 
+/* video chip type */
+#define VIDEO_CHIP_VICII 0
+#define VIDEO_CHIP_VDC   1
+
 /* video filter type, resource "CHIPFilter" */
 #define VIDEO_FILTER_NONE         0
 #define VIDEO_FILTER_CRT          1
@@ -70,6 +74,10 @@ struct canvas_refresh_s {
 typedef struct canvas_refresh_s canvas_refresh_t;
 
 struct draw_buffer_s {
+    /* The real drawing buffers, with padding bytes on either side to workaround CRT and Scale2x bugs */
+    uint8_t *draw_buffer_padded_allocations[2];
+    /* Pointers into the non padded buffers within the padded buffers */
+    uint8_t *draw_buffer_non_padded[2];
     /* The memory buffer where the screen of the emulated machine is drawn. Palettized, 1 byte per pixel */
     uint8_t *draw_buffer;
     /* Width of draw_buffer in pixels */
@@ -103,17 +111,20 @@ struct cap_render_s {
 };
 typedef struct cap_render_s cap_render_t;
 
+
 #define FULLSCREEN_MAXDEV 4
 
 struct cap_fullscreen_s {
+    /* FIXME: get rid of as much as possible of this. */
     unsigned int device_num;
     const char *device_name[FULLSCREEN_MAXDEV];
     int (*enable)(struct video_canvas_s *canvas, int enable);
     int (*statusbar)(struct video_canvas_s *canvas, int enable);
-    int (*double_size)(struct video_canvas_s *canvas, int double_size);
-    int (*double_scan)(struct video_canvas_s *canvas, int double_scan);
     int (*device)(struct video_canvas_s *canvas, const char *device);
     int (*mode[FULLSCREEN_MAXDEV])(struct video_canvas_s *canvas, int mode);
+    /* needed in SDL */
+    int (*double_size)(struct video_canvas_s *canvas, int double_size);
+    int (*double_scan)(struct video_canvas_s *canvas, int double_scan);
 };
 typedef struct cap_fullscreen_s cap_fullscreen_t;
 
@@ -126,6 +137,7 @@ struct video_chip_cap_s {
     unsigned int hwscale_allowed;
     unsigned int scale2x_allowed;
     unsigned int double_buffering_allowed;
+    unsigned int interlace_allowed;
     const char *external_palette_name;
     cap_render_t single_mode;
     cap_render_t double_mode;
@@ -155,6 +167,25 @@ struct video_render_color_tables_s {
     int32_t line_yuv_0[VIDEO_MAX_OUTPUT_WIDTH * 3];
     int16_t prevrgbline[VIDEO_MAX_OUTPUT_WIDTH * 3];
     uint8_t rgbscratchbuffer[VIDEO_MAX_OUTPUT_WIDTH * 4];
+    
+    /*
+     * All values below here formerly were globals in video-color.h.
+     * This resulted in palette leaks between multiple rendering windows (VDC / VICII)
+     */
+    uint32_t gamma_red[256 * 3];
+    uint32_t gamma_grn[256 * 3];
+    uint32_t gamma_blu[256 * 3];
+
+    uint32_t gamma_red_fac[256 * 3 * 2];
+    uint32_t gamma_grn_fac[256 * 3 * 2];
+    uint32_t gamma_blu_fac[256 * 3 * 2];
+
+    /* optional alpha value for 32bit rendering */
+    uint32_t alpha;
+    
+    uint32_t color_red[256];
+    uint32_t color_grn[256];
+    uint32_t color_blu[256];
 };
 typedef struct video_render_color_tables_s video_render_color_tables_t;
 
@@ -192,6 +223,8 @@ struct video_render_config_s {
     char *external_palette_name;   /* Name of the external palette.  */
     int double_buffer;             /* Double buffering enabled? */
     int readable;                  /* reading of frame buffer is safe and fast */
+    int interlaced;                /* Is the output currently interlaced? */
+    int interlace_field;           /* Which of the two interlaced frames is current? */
     struct video_cbm_palette_s *cbm_palette; /* Internal palette.  */
     struct video_render_color_tables_s color_tables;
     int fullscreen_enabled;
@@ -207,9 +240,9 @@ typedef struct video_render_config_s video_render_config_t;
 extern void video_render_initconfig(video_render_config_t *config);
 extern void video_render_setphysicalcolor(video_render_config_t *config,
                                           int index, uint32_t color, int depth);
-extern void video_render_setrawrgb(unsigned int index, uint32_t r, uint32_t g,
-                                   uint32_t b);
-extern void video_render_setrawalpha(uint32_t a);
+extern void video_render_setrawrgb(video_render_color_tables_t *color_tab, unsigned int index,
+                                   uint32_t r, uint32_t g, uint32_t b);
+extern void video_render_setrawalpha(video_render_color_tables_t *color_tab, uint32_t a);
 extern void video_render_initraw(struct video_render_config_s *videoconfig);
 
 /**************************************************************/
@@ -223,8 +256,10 @@ extern struct video_canvas_s *video_canvas_create(struct video_canvas_s *canvas,
                                                   unsigned int *width, unsigned int *height,
                                                   int mapped);
 extern void video_arch_canvas_init(struct video_canvas_s *canvas);
+extern int video_arch_get_active_chip(void);
 extern void video_canvas_shutdown(struct video_canvas_s *canvas);
 extern struct video_canvas_s *video_canvas_init(void);
+extern void video_canvas_refresh_all_tracked(void);
 extern void video_canvas_refresh(struct video_canvas_s *canvas,
                                  unsigned int xs, unsigned int ys,
                                  unsigned int xi, unsigned int yi,
@@ -241,7 +276,7 @@ extern void video_canvas_unmap(struct video_canvas_s *canvas);
 extern void video_canvas_resize(struct video_canvas_s *canvas, char resize_canvas);
 extern void video_canvas_render(struct video_canvas_s *canvas, uint8_t *trg,
                                 int width, int height, int xs, int ys,
-                                int xt, int yt, int pitcht, int depth);
+                                int xt, int yt, int pitcht);
 extern void video_canvas_refresh_all(struct video_canvas_s *canvas);
 extern char video_canvas_can_resize(struct video_canvas_s *canvas);
 extern void video_viewport_get(struct video_canvas_s *canvas,
@@ -251,16 +286,6 @@ extern void video_viewport_resize(struct video_canvas_s *canvas, char resize_can
 extern void video_viewport_title_set(struct video_canvas_s *canvas,
                                      const char *title);
 extern void video_viewport_title_free(struct viewport_s *viewport);
-
-typedef struct video_draw_buffer_callback_s {
-    int (*draw_buffer_alloc)(struct video_canvas_s *canvas, uint8_t **draw_buffer,
-                             unsigned int fb_width, unsigned int fb_height,
-                             unsigned int *fb_pitch);
-    void (*draw_buffer_free)(struct video_canvas_s *canvas, uint8_t *draw_buffer);
-    void (*draw_buffer_clear)(struct video_canvas_s *canvas, uint8_t *draw_buffer,
-                              uint8_t value, unsigned int fb_width,
-                              unsigned int fb_height, unsigned int fb_pitch);
-} video_draw_buffer_callback_t;
 
 struct raster_s;
 

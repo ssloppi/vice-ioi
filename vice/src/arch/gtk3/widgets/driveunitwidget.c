@@ -29,8 +29,9 @@
 
 #include <gtk/gtk.h>
 
-#include "widgethelpers.h"
 #include "debug_gtk3.h"
+#include "drive.h"
+#include "widgethelpers.h"
 
 #include "driveunitwidget.h"
 
@@ -52,7 +53,7 @@ static int *unit_target;
 static void (*unit_callback)(int) = NULL;
 
 
-/** \brief  Handler for the "toggled" events of the radio buttons
+/** \brief  Handler for the 'toggled' events of the radio buttons
  *
  * \param[in]   widget      radio button triggering the event
  * \param[in]   user_data   unit number (int)
@@ -62,7 +63,6 @@ static void on_radio_toggled(GtkWidget *widget, gpointer user_data)
     int unit = GPOINTER_TO_INT(user_data);
 
     if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget))) {
-        debug_gtk3("setting unit to %d.", unit);
         if (unit_target != NULL) {
             *unit_target = unit;
         }
@@ -89,11 +89,10 @@ static GtkWidget *create_radio_group(int unit)
     GSList *group = NULL;
     int i;
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 0);
 
     last = NULL;
-    for (i = 8; i < 12; i++) {
+    for (i = DRIVE_UNIT_MIN; i <= DRIVE_UNIT_MAX; i++) {
         gchar buffer[16];
         GtkWidget *radio;
 
@@ -101,7 +100,7 @@ static GtkWidget *create_radio_group(int unit)
 
         radio = gtk_radio_button_new_with_label(group, buffer);
         gtk_radio_button_join_group(GTK_RADIO_BUTTON(radio), last);
-        gtk_grid_attach(GTK_GRID(grid), radio, i - 8, 0, 1, 1);
+        gtk_grid_attach(GTK_GRID(grid), radio, i - DRIVE_UNIT_MIN, 0, 1, 1);
 
         if (unit == i) {
             gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(radio), TRUE);
@@ -120,8 +119,9 @@ static GtkWidget *create_radio_group(int unit)
 
 /** \brief  Create a unit#-selection widget
  *
- * \param[in]   unit    currently selected unit number (8-11)
- * \param[out]  target  destination of the unit number on radio button clicks
+ * \param[in]   unit        currently selected unit number (8-11)
+ * \param[out]  target      destination of the unit number on radio button clicks
+ * \param[in]   callback    function to call on unit number changes
  *
  * \return  GtkGrid
  */
@@ -139,8 +139,7 @@ GtkWidget *drive_unit_widget_create(int unit, int *target, void (*callback)(int)
         *target = unit; /* make sure we don't end up with unintialized data */
     }
 
-    grid = gtk_grid_new();
-    gtk_grid_set_column_spacing(GTK_GRID(grid), 8);
+    grid = vice_gtk3_grid_new_spaced(8, 0);
 
     label = gtk_label_new("Unit #:");
     gtk_widget_set_halign(label, GTK_ALIGN_START);
@@ -149,10 +148,10 @@ GtkWidget *drive_unit_widget_create(int unit, int *target, void (*callback)(int)
     gtk_grid_attach(GTK_GRID(grid), group, 1, 0, 1, 1);
 
     /* connect signal handlers */
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < NUM_DISK_UNITS; i++) {
         GtkWidget *radio = gtk_grid_get_child_at(GTK_GRID(group), i, 0);
         g_signal_connect(radio, "toggled", G_CALLBACK(on_radio_toggled),
-            GINT_TO_POINTER(i + 8));
+            GINT_TO_POINTER(i + DRIVE_UNIT_MIN));
     }
 
     gtk_widget_show_all(grid);

@@ -34,13 +34,12 @@
 #include <gtk/gtk.h>
 #include <stdlib.h>
 
+#include "vice_gtk3.h"
+#include "joystick.h"
 #include "lib.h"
-#include "widgethelpers.h"
-#include "debug_gtk3.h"
 #include "machine.h"
 #include "resources.h"
-#include "joystick.h"
-#include "joy.h"
+#include "userport.h"
 #include "userport_joystick.h"
 
 #include "joystickuserportadapterwidget.h"
@@ -57,13 +56,13 @@ typedef struct adapter_info_s {
 /** \brief  List of available adapters for x64/x64sc/xscpu64/x128
  * */
 static adapter_info_t adapter_list_c64[] = {
-    { "Classical Games/Protovision", USERPORT_JOYSTICK_CGA },
-    { "PET", USERPORT_JOYSTICK_PET },
-    { "Hummer", USERPORT_JOYSTICK_HUMMER },
-    { "OEM", USERPORT_JOYSTICK_OEM },
-    { "Digital Excess/Hitmen", USERPORT_JOYSTICK_HIT },
-    { "Kingsoft", USERPORT_JOYSTICK_KINGSOFT },
-    { "Starbyte", USERPORT_JOYSTICK_STARBYTE },
+    { "Classical Games/Protovision", USERPORT_DEVICE_JOYSTICK_CGA },
+    { "PET", USERPORT_DEVICE_JOYSTICK_PET },
+    { "Hummer", USERPORT_DEVICE_JOYSTICK_HUMMER },
+    { "OEM", USERPORT_DEVICE_JOYSTICK_OEM },
+    { "Digital Excess/Hitmen", USERPORT_DEVICE_JOYSTICK_HIT },
+    { "Kingsoft", USERPORT_DEVICE_JOYSTICK_KINGSOFT },
+    { "Starbyte", USERPORT_DEVICE_JOYSTICK_STARBYTE },
     { NULL, -1 }
 };
 
@@ -71,10 +70,10 @@ static adapter_info_t adapter_list_c64[] = {
 /** \brief  List of available adapters for xvic/xpet/xplus4/xcbm
  * */
 static adapter_info_t adapter_list_other[] = {
-    { "Classical Games/Protovision", USERPORT_JOYSTICK_CGA },
-    { "PET", USERPORT_JOYSTICK_PET },
-    { "Hummer", USERPORT_JOYSTICK_HUMMER },
-    { "OEM", USERPORT_JOYSTICK_OEM },
+    { "Classical Games/Protovision", USERPORT_DEVICE_JOYSTICK_CGA },
+    { "PET", USERPORT_DEVICE_JOYSTICK_PET },
+    { "Hummer", USERPORT_DEVICE_JOYSTICK_HUMMER },
+    { "OEM", USERPORT_DEVICE_JOYSTICK_OEM },
     { NULL, -1 }
 };
 
@@ -104,16 +103,12 @@ static void on_adapter_changed(GtkComboBoxText *combo, gpointer user_data)
     id_val = (int)strtol(id_str, &endptr, 10);
 
     if (*endptr == '\0') {
-        debug_gtk3("setting UserportJoyType to %d.", id_val);
         resources_set_int("UserportJoyType", id_val);
     }
 }
 
 
 /** \brief  Create joystick device selection widget
- *
- * \param[in]   device  device number (0-4)
- * \param[in]   title   widget title
  *
  * \return  GtkGrid
  */
@@ -152,14 +147,14 @@ GtkWidget *joystick_userport_adapter_widget_create(void)
     /* get current value for resource */
     resources_get_int("UserportJoyType", &current);
 
-    grid = uihelpers_create_grid_with_label("Userport adapter", 1);
+    grid = vice_gtk3_grid_new_spaced_with_label(-1, -1, "Userport adapter", 1);
 
     combo = gtk_combo_box_text_new();
     g_object_set(combo, "margin-left", 16, NULL);
     for (i = 0; list[i].name != NULL; i++) {
         char id[32];
 
-        g_snprintf(id, 32, "%d", list[i].id);
+        g_snprintf(id, sizeof(id), "%d", list[i].id);
 
         gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(combo),
                 id, list[i].name);

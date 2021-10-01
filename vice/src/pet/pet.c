@@ -37,10 +37,10 @@
 #include "autostart.h"
 #include "bbrtc.h"
 #include "cartio.h"
-#include "clkguard.h"
 #include "crtc-mem.h"
 #include "crtc.h"
 #include "datasette.h"
+#include "datasette-sound.h"
 #include "debug.h"
 #include "debugcart.h"
 #include "diskimage.h"
@@ -67,7 +67,6 @@
 #include "mem.h"
 #include "monitor.h"
 #include "network.h"
-#include "paperclip64.h"
 #include "parallel.h"
 #include "pet-cmdline-options.h"
 #include "pet-resources.h"
@@ -104,6 +103,7 @@
 #include "userport.h"
 #include "userport_dac.h"
 #include "userport_joystick.h"
+#include "userport_petscii_snespad.h"
 #include "userport_rtc_58321a.h"
 #include "userport_rtc_ds1307.h"
 #include "util.h"
@@ -115,6 +115,10 @@
 
 #ifdef HAVE_MOUSE
 #include "mouse.h"
+#endif
+
+#ifdef IO_SIMULATION
+#include "userport_io_sim.h"
 #endif
 
 machine_context_t machine_context;
@@ -143,8 +147,13 @@ int machine_get_keyboard_type(void)
 
 char *machine_get_keyboard_type_name(int type)
 {
-    static char names[KBD_TYPE_NUM][5] = { KBD_TYPE_STR_BUSINESS_US, KBD_TYPE_STR_BUSINESS_UK,
-        KBD_TYPE_STR_BUSINESS_DE, KBD_TYPE_STR_BUSINESS_JP, KBD_TYPE_STR_GRAPHICS_US };
+    static char names[KBD_TYPE_NUM][5] = { 
+        KBD_TYPE_STR_BUSINESS_UK,
+        KBD_TYPE_STR_BUSINESS_US, 
+        KBD_TYPE_STR_BUSINESS_DE, 
+        KBD_TYPE_STR_BUSINESS_JP, 
+        KBD_TYPE_STR_GRAPHICS_US 
+    };
     return names[type]; /* return 0 if no different types exist */
 }
 
@@ -156,8 +165,8 @@ int machine_get_num_keyboard_types(void)
 
 /* FIXME: adjust this to reality :) */
 static kbdtype_info_t kbdinfo[KBD_TYPE_NUM + 1] = {
-    { "Business (us)", KBD_TYPE_BUSINESS_US, 0 },
     { "Business (uk)", KBD_TYPE_BUSINESS_UK, 0 },
+    { "Business (us)", KBD_TYPE_BUSINESS_US, 0 },
     { "Business (de)", KBD_TYPE_BUSINESS_DE, 0 },
     { "Business (jp)", KBD_TYPE_BUSINESS_JP, 0 },
     { "Graphics (us)", KBD_TYPE_GRAPHICS_US, 0 },
@@ -171,28 +180,32 @@ kbdtype_info_t *machine_get_keyboard_info_list(void)
 
 /* ------------------------------------------------------------------------ */
 
-static joyport_port_props_t userport_joy_control_port_1 =
+static joyport_port_props_t joy_adapter_control_port_1 =
 {
-    "Userport joystick adapter port 1",
-    0,                  /* NO potentiometer connected to this port */
-    0,                  /* has NO lightpen support on this port */
-    0                   /* port can be switched on/off */
+    "Joystick adapter port 1",
+    0,                      /* has NO potentiometer connected to this port */
+    0,                      /* has NO lightpen support on this port */
+    0,                      /* has NO joystick adapter on this port */
+    1,                      /* has output support on this port */
+    0                       /* port can be switched on/off */
 };
 
-static joyport_port_props_t userport_joy_control_port_2 =
+static joyport_port_props_t joy_adapter_control_port_2 =
 {
-    "Userport joystick adapter port 2",
-    0,                  /* has NO potentiometer connected to this port */
-    0,                  /* has NO lightpen support on this port */
-    0                   /* port can be switched on/off */
+    "Joystick adapter port 2",
+    0,                      /* has NO potentiometer connected to this port */
+    0,                      /* has NO lightpen support on this port */
+    0,                      /* has NO joystick adapter on this port */
+    1,                      /* has output support on this port */
+    0                       /* port can be switched on/off */
 };
 
 static int init_joyport_ports(void)
 {
-    if (joyport_port_register(JOYPORT_3, &userport_joy_control_port_1) < 0) {
+    if (joyport_port_register(JOYPORT_3, &joy_adapter_control_port_1) < 0) {
         return -1;
     }
-    return joyport_port_register(JOYPORT_4, &userport_joy_control_port_2);
+    return joyport_port_register(JOYPORT_4, &joy_adapter_control_port_2);
 }
 
 /* PET-specific resource initialization.  This is called before initializing
@@ -260,6 +273,10 @@ int machine_resources_init(void)
         init_resource_fail("rs232drv");
         return -1;
     }
+    if (userport_resources_init() < 0) {
+        init_resource_fail("userport devices");
+        return -1;
+    }
     if (printer_resources_init() < 0) {
         init_resource_fail("printer");
         return -1;
@@ -288,16 +305,8 @@ int machine_resources_init(void)
         init_resource_fail("joyport bbrtc");
         return -1;
     }
-    if (joyport_paperclip64_resources_init() < 0) {
-        init_resource_fail("joyport paperclip64 dongle");
-        return -1;
-    }
     if (joystick_resources_init() < 0) {
         init_resource_fail("joystick");
-        return -1;
-    }
-    if (userport_resources_init() < 0) {
-        init_resource_fail("userport devices");
         return -1;
     }
     if (gfxoutput_resources_init() < 0) {
@@ -355,8 +364,24 @@ int machine_resources_init(void)
         return -1;
     }
 #endif
-    if (userport_joystick_resources_init() < 0) {
-        init_resource_fail("userport joystick");
+    if (userport_joystick_cga_resources_init() < 0) {
+        init_resource_fail("userport cga joystick");
+        return -1;
+    }
+    if (userport_joystick_pet_resources_init() < 0) {
+        init_resource_fail("userport pet joystick");
+        return -1;
+    }
+    if (userport_joystick_hummer_resources_init() < 0) {
+        init_resource_fail("userport hummer joystick");
+        return -1;
+    }
+    if (userport_joystick_oem_resources_init() < 0) {
+        init_resource_fail("userport oem joystick");
+        return -1;
+    }
+    if (userport_joystick_synergy_resources_init() < 0) {
+        init_resource_fail("userport synergy joystick");
         return -1;
     }
     if (userport_dac_resources_init() < 0) {
@@ -371,6 +396,16 @@ int machine_resources_init(void)
         init_resource_fail("userport rtc (ds1307)");
         return -1;
     }
+    if (userport_petscii_snespad_resources_init() < 0) {
+        init_resource_fail("userport petscii snes pad");
+        return -1;
+    }
+#ifdef IO_SIMULATION
+    if (userport_io_sim_resources_init() < 0) {
+        init_resource_fail("userport I/O simulation");
+        return -1;
+    }
+#endif
     if (debugcart_resources_init() < 0) {
         init_resource_fail("debug cart");
         return -1;
@@ -393,7 +428,6 @@ void machine_resources_shutdown(void)
     cartio_shutdown();
     userport_rtc_58321a_resources_shutdown();
     userport_rtc_ds1307_resources_shutdown();
-    userport_resources_shutdown();
     joyport_bbrtc_resources_shutdown();
     tapeport_resources_shutdown();
     debugcart_resources_shutdown();
@@ -536,14 +570,6 @@ int machine_cmdline_options_init(void)
         return -1;
     }
 #endif
-    if (userport_joystick_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport joystick");
-        return -1;
-    }
-    if (userport_dac_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("userport dac");
-        return -1;
-    }
     if (userport_rtc_58321a_cmdline_options_init() < 0) {
         init_cmdline_options_fail("userport rtc (58321a)");
         return -1;
@@ -576,7 +602,7 @@ static void pet_crtc_signal(unsigned int signal)
 
 /* ------------------------------------------------------------------------- */
 
-void machine_handle_pending_alarms(int num_write_cycles)
+void machine_handle_pending_alarms(CLOCK num_write_cycles)
 {
 }
 
@@ -585,7 +611,7 @@ static void pet_monitor_init(void)
     unsigned int dnr;
     monitor_cpu_type_t asm6502;
     monitor_cpu_type_t asm6809;
-    monitor_interface_t *drive_interface_init[DRIVE_NUM];
+    monitor_interface_t *drive_interface_init[NUM_DISK_UNITS];
     monitor_cpu_type_t *asmarray[3];
 
     asmarray[0] = &asm6502;
@@ -595,7 +621,7 @@ static void pet_monitor_init(void)
     asm6502_init(&asm6502);
     asm6809_init(&asm6809);
 
-    for (dnr = 0; dnr < DRIVE_NUM; dnr++) {
+    for (dnr = 0; dnr < NUM_DISK_UNITS; dnr++) {
         drive_interface_init[dnr] = drive_cpu_monitor_interface_get(dnr);
     }
 
@@ -681,11 +707,13 @@ int machine_specific_init(void)
     userport_dac_sound_chip_init();
 
     drive_sound_init();
+    datasette_sound_init();
     video_sound_init();
 
     /* Initialize sound.  Notice that this does not really open the audio
        device yet.  */
-    sound_init(machine_timing.cycles_per_sec, machine_timing.cycles_per_rfsh);
+    sound_init((unsigned int)machine_timing.cycles_per_sec,
+               (unsigned int)machine_timing.cycles_per_rfsh);
 
     /* Initialize keyboard buffer.  FIXME: Is this correct?  */
     /* moved to mem_load() because it's model specific... AF 30jun1998
@@ -776,19 +804,9 @@ void machine_specific_shutdown(void)
 /* This hook is called at the end of every frame.  */
 static void machine_vsync_hook(void)
 {
-    CLOCK sub;
-
-    autostart_advance();
-
     drive_vsync_hook();
 
     screenshot_record();
-
-    sub = clk_guard_prevent_overflow(maincpu_clk_guard);
-
-    /* The drive has to deal both with our overflowing and its own one, so
-       it is called even when there is no overflowing in the main CPU.  */
-    drive_cpu_prevent_clk_overflow_all(sub);
 }
 
 /* Dummy - no restore key.  */
@@ -853,7 +871,6 @@ void machine_change_timing(int timeval, int border_mode)
     vsync_set_machine_parameter(machine_timing.rfsh_per_sec, machine_timing.cycles_per_sec);
     sound_set_machine_parameter(machine_timing.cycles_per_sec, machine_timing.cycles_per_rfsh);
     sid_set_machine_parameter(machine_timing.cycles_per_sec);
-    clk_guard_set_clk_base(maincpu_clk_guard, machine_timing.cycles_per_rfsh);
 #endif
 
     machine_trigger_reset(MACHINE_RESET_MODE_HARD);
@@ -936,32 +953,60 @@ void pet_crtc_set_screen(void)
     crtc_set_hw_options((cols == 80) ? 2 : 0, vmask, 0x2000, 512, 0x1000);
     crtc_set_retrace_type(petres.crtc ? 1 : 0);
 
-    /* No CRTC -> assume 40 columns */
+    /* No CRTC -> assume 40 columns and 60 Hz */
     if (!petres.crtc) {
-        crtc_store(0, 13);
-        crtc_store(1, 0);
-        crtc_store(0, 12);
-        crtc_store(1, 0x10);
-        crtc_store(0, 9);
-        crtc_store(1, 7);
-        crtc_store(0, 8);
-        crtc_store(1, 0);
-        crtc_store(0, 7);
-        crtc_store(1, 29);
-        crtc_store(0, 6);
-        crtc_store(1, 25);
-        crtc_store(0, 5);
-        crtc_store(1, 16);
-        crtc_store(0, 4);
-        crtc_store(1, 32);
-        crtc_store(0, 3);
-        crtc_store(1, 8);
-        crtc_store(0, 2);
-        crtc_store(1, 50);
-        crtc_store(0, 1);
-        crtc_store(1, 40);
-        crtc_store(0, 0);
-        crtc_store(1, 63);
+        static uint8_t crtc_values[14] = {
+            /*
+             * Set the CRTC to display 60 frames per second.
+             *
+             * Tuned specifically for 64 clocks (= chars) per scanline,
+             * for the Cursor #18 Hi-Res program.
+             * The exact time of the IRQ is probably not 100% right,
+             * but close enough to get a visual effect.
+             *
+             * 15625 Hz horizontal
+             * PET: cycles per frame set to 16640, refresh to 60.096Hz
+             *
+             * Additional note: new ROMs 99/9A count to 623:
+             * 0099-009A        Jiffy clock correction: 623rd 1/60 sec
+             *                  does not increment time
+             *
+             * Presumably this should correct the frequency which is
+             * slightly over 60 Hz: 60.096 * 622 / 623 = 59.99954.
+             *
+             * Note that with the granularity of 1 scanline we cannot
+             * really get closer to the "real" freqency, assuming that
+             * the 622/623 fix is perfect: 60 * 623 / 622 = 60.096 463.
+             */
+              63, /* R0 total horizontal characters - 1 */
+              40, /* R1 displayed horizontal characters */
+              50, /* R2 horizontal sync position */
+            (0 << 4)|8, /* R3 vertical / horizontal sync width */
+              31, /* R4 total vertical characters - 1 */
+               4, /* R5 total vertical lines adjustment */
+              25, /* R6 displayed vertical characters */
+              29, /* R7 vertical sync position */
+               0, /* R8 MODECTRL */
+               7, /* R9 scanlines per character row - 1, including spacing */
+               0, /* R10 CURSORSTART */
+               0, /* R11 CURSOREND */
+            0x10, /* R12 DISPSTARTH */
+            0x00, /* R13 DISPSTARTL */
+#if 0
+            /*
+             * Original values.
+             * PET: cycles per frame set to 17920, refresh to 55.803Hz
+             */
+            63, 40, 50, 8, 32, 16, 25, 29,
+            0, 7, 0, 0, 0x10, 0,
+#endif
+        };
+        int r;
+
+        for (r = 13; r >= 0; r--) {
+            crtc_store(0, r);
+            crtc_store(1, crtc_values[r]);
+        }
     }
 }
 
@@ -993,7 +1038,7 @@ struct image_contents_s *machine_diskcontents_bus_read(unsigned int unit)
 
 uint8_t machine_tape_type_default(void)
 {
-    return TAPE_CAS_TYPE_PRG;
+    return TAPE_CAS_TYPE_BAS;
 }
 
 uint8_t machine_tape_behaviour(void)
@@ -1003,6 +1048,16 @@ uint8_t machine_tape_behaviour(void)
 
 int machine_addr_in_ram(unsigned int addr)
 {
+    /* Exclude both possible locations of the CHRGET routine */
+    if (addr >= 0x0070 && addr < 0x0088) {
+        return 0;
+    }
+
+    /* the old ROM location */
+    if (addr >= 0x00c2 && addr < 0x00da) {
+        return 0;
+    }
+
     return addr < 0xb000;
 }
 
@@ -1033,11 +1088,11 @@ static void pet_userport_set_flag(uint8_t b)
 }
 
 static userport_port_props_t userport_props = {
-    1, /* has pa2 pin */
-    0, /* NO pa3 pin */
-    pet_userport_set_flag, /* has flag pin */
-    0, /* NO pc pin */
-    0  /* NO cnt1, cnt2 or sp pins */
+    1,                     /* port has the pa2 pin */
+    0,                     /* port does NOT have the pa3 pin */
+    pet_userport_set_flag, /* port has the flag pin, set flag function */
+    0,                     /* port does NOT have the pc pin */
+    0                      /* port does NOT have the cnt1, cnt2 or sp pins */
 };
 
 int machine_register_userport(void)
