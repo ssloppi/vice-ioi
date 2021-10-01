@@ -399,7 +399,7 @@ static int removepressedkey(GdkEvent *report, int *key, int *mod)
     return 0;
 }
 
-iq_key_t ioi_input_queue_poll()
+iq_key_t ioi_input_queue_poll(void)
 {
     iq_key_t iq_key = { .keycode = -1, .press = 0, .release = 0 };
 
@@ -430,7 +430,7 @@ iq_key_t ioi_input_queue_poll()
 }
 
 
-static gboolean ioi_input_queue_poll_all()
+static gboolean ioi_input_queue_poll_all(void)
 {
     gboolean retVal = FALSE;
     iq_key_t iq_key = ioi_input_queue_poll();
@@ -439,12 +439,12 @@ static gboolean ioi_input_queue_poll_all()
     {
         if (iq_key.press == 1)
         {
-            keyboard_key_pressed((signed long)iq_key.keycode);
+            keyboard_key_pressed((signed long)iq_key.keycode, 0);
             retVal = TRUE;
         }
         else if (iq_key.release == 1)
         {
-            keyboard_key_released((signed long)iq_key.keycode);
+            keyboard_key_released((signed long)iq_key.keycode, 0);
             retVal = FALSE;
         }
         iq_key = ioi_input_queue_poll();
