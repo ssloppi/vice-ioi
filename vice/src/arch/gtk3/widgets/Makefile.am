@@ -93,7 +93,6 @@ libwidgets_a_SOURCES = \
 	joystickautofirewidget.c \
 	joystickdevicewidget.c \
 	joystickmenupopup.c \
-	joystickuserportadapterwidget.c \
 	kbddebugwidget.c \
 	kbdlayoutwidget.c \
 	kbdmappingwidget.c \
@@ -181,6 +180,7 @@ libwidgets_a_SOURCES = \
 	tapeportdeviceswidget.c \
 	ultimemwidget.c \
 	userportdeviceswidget.c \
+	userportrsinterfacewidget.c \
 	userportprinterwidget.c \
 	v364speechwidget.c \
 	vdcmodelwidget.c \
@@ -254,7 +254,6 @@ EXTRA_DIST = \
 	joystickautofirewidget.h \
 	joystickdevicewidget.h \
 	joystickmenupopup.h \
-	joystickuserportadapterwidget.h \
 	kbddebugwidget.h \
 	kbdlayoutwidget.h \
 	kbdmappingwidget.h \
@@ -313,7 +312,6 @@ EXTRA_DIST = \
 	settings_mixer.h \
 	settings_model.h \
 	settings_monitor.h \
-	settings_peripherals_generic.h \
 	settings_printer.h \
 	settings_ramreset.h \
 	settings_romset.h \
@@ -343,6 +341,7 @@ EXTRA_DIST = \
 	tapeportdeviceswidget.h \
 	ultimemwidget.h \
 	userportdeviceswidget.h \
+	userportrsinterfacewidget.h \
 	userportprinterwidget.h \
 	v364speechwidget.h \
 	vdcmodelwidget.h \
