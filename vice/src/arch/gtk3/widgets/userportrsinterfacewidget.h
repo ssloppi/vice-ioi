@@ -1,7 +1,7 @@
-/** \file   coproc.h
- * \brief   co-process fork - header
+/** \file   userportrsinterfacewidget.h
+ * \brief   Userport RS232 Interface widget - header
  *
- * \author  Andre Fachat <a.fachat@physik.tu-chemnitz.de>
+ * \author  Bas Wassink <b.wassink@ziggo.nl>
  */
 
 /*
@@ -25,9 +25,20 @@
  *
  */
 
-#ifndef VICE_COPROC_H
-#define VICE_COPROC_H
+#ifndef VICE_USERPORTRSINTERFACEWIDGET_H
+#define VICE_USERPORTRSINTERFACEWIDGET_H
 
-int fork_coproc(int *fd_wr, int *fd_rd, char *cmd);
+#include "vice.h"
 
+#include <gtk/gtk.h>
+
+#define USERPORT_RS_NONINVERTED 0
+#define USERPORT_RS_INVERTED    1
+#define USERPORT_RS_CUSTOM      2
+#define USERPORT_RS_UP9600      3
+
+
+GtkWidget * userport_rsinterface_widget_create(void);
+
+void userport_rsinterface_widget_add_callback(GtkGrid *widget, void (*cb_func)(GtkWidget *));
 #endif

@@ -103,9 +103,7 @@ static int joyport_device_is_single_port(int id)
         case JOYPORT_ID_WAASOFT_DONGLE:
         case JOYPORT_ID_PROTOPAD:
         case JOYPORT_ID_PADDLES:
-#ifdef IO_SIMULATION
         case JOYPORT_ID_IO_SIMULATION:
-#endif
             return 0;
     }
     return 1;
@@ -553,7 +551,6 @@ static int check_valid_dongle(int port, int index)
     return 0;
 }
 
-#ifdef IO_SIMULATION
 static int check_valid_io_sim(int port, int index)
 {
     if (joyport_device[index].device_type != JOYPORT_DEVICE_IO_SIMULATION) {
@@ -568,7 +565,6 @@ static int check_valid_io_sim(int port, int index)
     }
     return 0;
 }
-#endif
 
 static int joyport_valid_devices_compare_names(const void* a, const void* b)
 {
@@ -606,12 +602,30 @@ static int joyport_check_valid_devices(int port, int index)
     if (!check_valid_dongle(port, index)) {
         return 0;
     }
-#ifdef IO_SIMULATION
     if (!check_valid_io_sim(port, index)) {
         return 0;
     }
-#endif
     return 1;
+}
+
+static char *joyport_get_joystick_device_name(int port)
+{
+    if (port == JOYPORT_1 || port == JOYPORT_2) {
+        return "Joystick";
+    }
+    switch (joystick_adapter_get_id()) {
+        case JOYSTICK_ADAPTER_ID_NONE:
+        case JOYSTICK_ADAPTER_ID_GENERIC_USERPORT:
+        case JOYSTICK_ADAPTER_ID_SPACEBALLS:
+        case JOYSTICK_ADAPTER_ID_MULTIJOY:
+        case JOYSTICK_ADAPTER_ID_INCEPTION:
+            return "Joystick";
+        case JOYSTICK_ADAPTER_ID_NINJA_SNES:
+        case JOYSTICK_ADAPTER_ID_USERPORT_PETSCII_SNES:
+        case JOYSTICK_ADAPTER_ID_USERPORT_SUPERPAD64:
+            return "SNES Pad";
+    }
+    return "Unknown joystick";
 }
 
 joyport_desc_t *joyport_get_valid_devices(int port, int sort)
@@ -633,7 +647,11 @@ joyport_desc_t *joyport_get_valid_devices(int port, int sort)
     for (i = 0; i < JOYPORT_MAX_DEVICES; ++i) {
         if (joyport_device[i].name) {
             if (joyport_check_valid_devices(port, i)) {
-                retval[j].name = joyport_device[i].name;
+                if (i == JOYPORT_ID_JOYSTICK) {
+                    retval[j].name = joyport_get_joystick_device_name(port);
+                } else {
+                    retval[j].name = joyport_device[i].name;
+                }
                 retval[j].id = i;
                 retval[j].device_type = joyport_device[i].device_type;
                 ++j;
@@ -848,7 +866,7 @@ int joyport_port_is_active(int port)
             break;
         case JOYPORT_3:    /* Fallthrough */
         case JOYPORT_4:    /* Fallthrough */
-        case JOYPORT_6:    /* Fallthrough */
+        case JOYPORT_5:    /* Fallthrough */
         case JOYPORT_7:    /* Fallthrough */
         case JOYPORT_8:    /* Fallthrough */
         case JOYPORT_9:    /* Fallthrough */
@@ -857,7 +875,7 @@ int joyport_port_is_active(int port)
                 active = 1;
             }
             break;
-        case JOYPORT_5:
+        case JOYPORT_6:
             if (joystick_adapter_additional_ports || joystick_adapter_ports > (port - 2)) {
                 active = 1;
             }
@@ -1092,11 +1110,9 @@ static const struct joyport_opt_s id_match[] = {
     { "inception",         JOYPORT_ID_INCEPTION },
     { "multijoy",          JOYPORT_ID_MULTIJOY_JOYSTICKS },
     { "protopad",          JOYPORT_ID_PROTOPAD },
-#ifdef IO_SIMULATION
     { "io",                JOYPORT_ID_IO_SIMULATION },
     { "iosim",             JOYPORT_ID_IO_SIMULATION },
     { "iosimulation",      JOYPORT_ID_IO_SIMULATION },
-#endif
     { "mfjoy",             JOYPORT_ID_MF_JOYSTICK },
     { "mfjoystick",        JOYPORT_ID_MF_JOYSTICK },
     { NULL, -1 }
@@ -1104,8 +1120,8 @@ static const struct joyport_opt_s id_match[] = {
 
 static int is_a_number(const char *str)
 {
-    int i;
-    int len = strlen(str);
+    size_t i;
+    size_t len = strlen(str);
 
     for (i = 0; i < len; i++) {
         if (!isdigit(str[i])) {

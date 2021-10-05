@@ -546,7 +546,7 @@ char *get_joy_pot_mapping_string(int joynr, int pot)
     }
 
     if (port != 255 && axis != 255) {
-        snprintf(mapping_retval, 100, "J%d, Ax%d", port, axis);
+        snprintf(mapping_retval, 50, "J%d, Ax%d", port, axis);
         retval = mapping_retval;
     }
     return retval;
@@ -611,9 +611,9 @@ char *get_joy_pin_mapping_string(int joynr, int pin)
     }
     if (valid == 1) {
         if (index_string != NULL ) {
-            snprintf(mapping_retval, 100, "J%d, %s%d, %s%d", joy, type_string, index, index_string, sub_index);
+            snprintf(mapping_retval, 50, "J%d, %s%d, %s%d", joy, type_string, index, index_string, sub_index);
         } else {
-            snprintf(mapping_retval, 100, "J%d, %s%d", joy, type_string, index);
+            snprintf(mapping_retval, 50, "J%d, %s%d", joy, type_string, index);
         }
         retval = mapping_retval;
     }
