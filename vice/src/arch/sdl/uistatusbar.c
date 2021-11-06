@@ -65,6 +65,7 @@
 
 static int statusbar_drive_offset[4][2];    /* points to the position of the T in the widget */
 static int statusbar_drive_track[4][2];
+static int statusbar_drive_side[4][2];
 
 static char statusbar_text[MAX_STATUSBAR_LEN + 1] = BLANKLINE;
 static char kbdstatusbar_text[MAX_STATUSBAR_LEN + 1] = BLANKLINE;
@@ -167,13 +168,15 @@ void ui_enable_drive_status(ui_drive_enable_t state, int *drive_led_color)
             statusbar_drive_offset[drive_number][0] = (int)offset;
             ui_display_drive_led(drive_number, 0, 0, 0);
             ui_display_drive_track(drive_number, 0, 
-                                   statusbar_drive_track[drive_number][0]);
+                                   statusbar_drive_track[drive_number][0],
+                                   statusbar_drive_side[drive_number][0]);
             if (drive_is_dualdrive_by_devnr(drive_number + 8)) {
                 offset += (drive_number > 1) ? 6 : 5;
                 statusbar_drive_offset[drive_number][1] = (int)offset;
                 ui_display_drive_led(drive_number, 1, 0, 0);
                 ui_display_drive_track(drive_number, 1, 
-                                    statusbar_drive_track[drive_number][1]);
+                                    statusbar_drive_track[drive_number][1],
+                                    statusbar_drive_side[drive_number][1]);
             } else {
                 statusbar_drive_offset[drive_number][1] = 0;
             }
@@ -191,7 +194,8 @@ void ui_enable_drive_status(ui_drive_enable_t state, int *drive_led_color)
 
 void ui_display_drive_track(unsigned int drive_number, 
                             unsigned int drive_base, 
-                            unsigned int half_track_number)
+                            unsigned int half_track_number,
+                            unsigned int disk_side)
 {
     unsigned int track_number = half_track_number / 2;
     unsigned int offset;
@@ -202,13 +206,16 @@ void ui_display_drive_track(unsigned int drive_number,
     /* printf("ui_display_drive_track drive_number:%d drive_base:%d half_track_number:%d\n",
            drive_number, drive_base, half_track_number); */
 
+    /* FIXME: disk side not displayed yet */
+
     /* remember for when we need to refresh it */
     statusbar_drive_track[drive_number][drive_base] = half_track_number;
-    
+    statusbar_drive_side[drive_number][drive_base] = disk_side;
+
     offset = statusbar_drive_offset[drive_number][drive_base] + 1;
     statusbar_text[offset] = (track_number / 10) + '0';
     statusbar_text[offset + 1] = (track_number % 10) + '0';
-    
+
     if (uistatusbar_state & UISTATUSBAR_ACTIVE) {
         uistatusbar_state |= UISTATUSBAR_REPAINT;
     }
@@ -259,28 +266,28 @@ void ui_display_drive_current_image(unsigned int init_number, unsigned int drive
 
 /* Tape related UI */
 
-void ui_set_tape_status(int tape_status)
+void ui_set_tape_status(int port, int tape_status)
 {
     tape_enabled = tape_status;
 
     display_tape();
 }
 
-void ui_display_tape_motor_status(int motor)
+void ui_display_tape_motor_status(int port, int motor)
 {
     tape_motor = motor;
 
     display_tape();
 }
 
-void ui_display_tape_control_status(int control)
+void ui_display_tape_control_status(int port, int control)
 {
     tape_control = control;
 
     display_tape();
 }
 
-void ui_display_tape_counter(int counter)
+void ui_display_tape_counter(int port, int counter)
 {
     if (tape_counter != counter) {
         display_tape();
@@ -289,7 +296,7 @@ void ui_display_tape_counter(int counter)
     tape_counter = counter;
 }
 
-void ui_display_tape_current_image(const char *image)
+void ui_display_tape_current_image(int port, const char *image)
 {
 #ifdef SDL_DEBUG
     fprintf(stderr, "%s: %s\n", __func__, image);
@@ -500,7 +507,11 @@ void ui_display_kbd_status(SDL_Event *e)
                 SDL2x_to_SDL1x_Keys(e->key.keysym.sym),
                 ((e->key.keysym.sym & 0xffff0000) == 0x40000000) ? 'M' : ((e->key.keysym.sym & 0xffff0000) != 0x00000000) ? 'E' : ' ',
                 e->key.keysym.mod);
+#ifdef USE_SDLUI2
         log_message(LOG_DEFAULT, "%s %03d>%03d %c%04x",
+#else
+        log_message(LOG_DEFAULT, "%s %03u>%03u %c%04x",
+#endif
                 (e->type == SDL_KEYUP) ? "release" : "press  ",
                 e->key.keysym.sym & 0xffff,
                 SDL2x_to_SDL1x_Keys(e->key.keysym.sym),

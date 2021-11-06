@@ -28,6 +28,7 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/arch/gtk3/widgets \
 	-I$(top_srcdir)/src/arch/gtk3/widgets/base \
 	-I$(top_srcdir)/src/samplerdrv \
+	-I$(top_srcdir)/src/tapeport \
 	-I$(top_srcdir)/src/hvsc
 
 AM_CFLAGS = @VICE_CFLAGS@
@@ -144,6 +145,7 @@ libwidgets_a_SOURCES = \
 	settings_ethernet.c \
 	settings_fsdevice.c \
 	settings_host_display.c \
+	settings_hotkeys.c \
 	settings_io.c \
 	settings_joystick.c \
 	settings_keyboard.c \
@@ -305,6 +307,7 @@ EXTRA_DIST = \
 	settings_ethernet.h \
 	settings_fsdevice.h \
 	settings_host_display.h \
+	settings_hotkeys.h \
 	settings_io.h \
 	settings_joystick.h \
 	settings_keyboard.h \

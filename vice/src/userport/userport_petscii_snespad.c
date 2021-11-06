@@ -82,6 +82,7 @@ static userport_device_t userport_snespad_device = {
     NULL,                                      /* NO read sp1 pin function */
     NULL,                                      /* NO store sp2 pin function */
     NULL,                                      /* NO read sp2 pin function */
+    NULL,                                      /* NO reset function */
     userport_petscii_write_snapshot_module,    /* snapshot write function */
     userport_petscii_read_snapshot_module      /* snapshot read function */
 };
@@ -105,8 +106,10 @@ static int userport_petscii_enable(int value)
         counter = 0;
         joystick_adapter_activate(JOYSTICK_ADAPTER_ID_USERPORT_PETSCII_SNES, userport_snespad_device.name);
         joystick_adapter_set_ports(1);
+        joystick_set_snes_mapping(JOYPORT_3);
     } else {
         joystick_adapter_deactivate();
+        joyport_clear_mapping(JOYPORT_3);
     }
 
     userport_snespad_enabled = val;

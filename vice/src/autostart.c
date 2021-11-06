@@ -74,6 +74,7 @@
 #include "snapshot.h"
 #include "tape.h"
 #include "tapecart.h"
+#include "tapeport.h"
 #include "types.h"
 #include "uiapi.h"
 #include "util.h"
@@ -170,6 +171,8 @@ int autostart_ignore_reset = 0; /* FIXME: only used by datasette.c, does it real
 
 static int autostart_disk_unit = DRIVE_UNIT_MIN; /* set by setup_for_disk */
 static int autostart_disk_drive = 0; /* set by setup_for_disk */
+
+static int autostart_tape_unit = 1; /* set by autostart_tape */
 
 #define AUTOSTART_DISK_IMAGE    0
 #define AUTOSTART_PRG_VFS       1
@@ -766,6 +769,8 @@ static void restore_drive_emulation_state(int unit, int drive)
     autostart_disk_unit = DRIVE_UNIT_MIN;
     autostart_disk_drive = 0;
 
+    autostart_tape_unit = 1;
+
     autostart_type = -1;
 
     DBG(("restore_drive_emulation_state(unit: %d drive: %d) tde:%d iecdevice:%d traps:%d warp:%d", unit, drive,
@@ -968,14 +973,27 @@ static void advance_hastape(void)
     switch (check("READY.", AUTOSTART_WAIT_BLINK)) {
         case YES:
             log_message(autostart_log, "Loading file.");
-            if (autostart_program_name) {
-                tmp = util_concat("LOAD\"", autostart_program_name, "\"",
-                                  autostart_tape_basic_load ? "" : ",1,1", "\r", NULL);
-            } else {
-                if (autostart_tape_basic_load) {
-                    tmp = lib_strdup("LOAD\r");
+            if (autostart_tape_unit == 2) {
+                if (autostart_program_name) {
+                    tmp = util_concat("LOAD\"", autostart_program_name, "\"",
+                                    autostart_tape_basic_load ? "" : ",2,1", ",2\r", NULL);
                 } else {
-                    tmp = lib_strdup("LOAD\"\",1,1\r");
+                    if (autostart_tape_basic_load) {
+                        tmp = lib_strdup("LOAD\"\",2\r");
+                    } else {
+                        tmp = lib_strdup("LOAD\"\",2,1\r");
+                    }
+                }
+            } else {
+                if (autostart_program_name) {
+                    tmp = util_concat("LOAD\"", autostart_program_name, "\"",
+                                    autostart_tape_basic_load ? "" : ",1,1", "\r", NULL);
+                } else {
+                    if (autostart_tape_basic_load) {
+                        tmp = lib_strdup("LOAD\r");
+                    } else {
+                        tmp = lib_strdup("LOAD\"\",1,1\r");
+                    }
                 }
             }
             kbdbuf_feed(tmp);
@@ -995,10 +1013,11 @@ static void advance_hastape(void)
 
 static void advance_pressplayontape(void)
 {
+    int port = (autostart_tape_unit == 2) ? TAPEPORT_PORT_2 : TAPEPORT_PORT_1;
     switch (check2("PRESS PLAY ON TAPE", AUTOSTART_NOWAIT_BLINK, 0, AUTOSTART_CHECK_ANY_COLUMN)) {
         case YES:
             autostartmode = AUTOSTART_LOADINGTAPE;
-            datasette_control(DATASETTE_CONTROL_START);
+            datasette_control(port, DATASETTE_CONTROL_START);
             break;
         case NO:
             disable_warp_if_was_requested();
@@ -1456,9 +1475,11 @@ int autostart_snapshot(const char *file_name, const char *program_name)
 
 /* Autostart tape image `file_name'.  */
 int autostart_tape(const char *file_name, const char *program_name,
-                   unsigned int program_number, unsigned int runmode)
+                   unsigned int program_number, unsigned int runmode,
+                   unsigned int tapeport)
 {
     uint8_t do_seek = 1;
+    unsigned int tapeunit = (tapeport == TAPEPORT_PORT_2) ? 2 : 1;
 
     if (network_connected() || event_record_active() || event_playback_active()
         || !file_name || !autostart_enabled) {
@@ -1470,35 +1491,38 @@ int autostart_tape(const char *file_name, const char *program_name,
     init_drive_emulation_state(DRIVE_UNIT_MIN, 0);
 
     /* reset datasette emulation and remove the tape image. */
-    datasette_control(DATASETTE_CONTROL_RESET);
-    tape_image_detach(1);
+    datasette_control(tapeport, DATASETTE_CONTROL_RESET);
+    tape_image_detach(tapeunit);
 
-    if (!(tape_image_attach(1, file_name) < 0)) {
+    if (!(tape_image_attach(tapeunit, file_name) < 0)) {
         log_message(autostart_log,
-                    "Attached file `%s' as a tape image.", file_name);
-        if (!tape_tap_attached()) {
+                    "Attached file `%s' as a tape image on unit #%u.", file_name, tapeunit);
+        if (!tape_tap_attached(tapeport)) {
             if (program_number == 0 || program_number == 1) {
                 do_seek = 0;
             }
             program_number -= 1;
         }
         if (tap_initial_raw_offset > 0) {
-            tape_seek_to_offset(tape_image_dev1, tap_initial_raw_offset);
+            tape_seek_to_offset(tape_image_dev[tapeport], tap_initial_raw_offset);
             tap_initial_raw_offset = 0;
         } else if (do_seek) {
             if (program_number > 0) {
                 /* program numbers in tape_seek_to_file() start at 0 */
-                tape_seek_to_file(tape_image_dev1, program_number - 1);
+                tape_seek_to_file(tape_image_dev[tapeport], program_number - 1);
             } else {
-                tape_seek_start(tape_image_dev1);
+                tape_seek_start(tape_image_dev[tapeport]);
             }
         }
-        if (!tape_tap_attached()) {
+        if (!tape_tap_attached(tapeport)) {
             /* Kludge: for t64 images we need devtraps ON */
             if (!get_device_traps_state(1)) {
                 set_device_traps_state(1, 1);
             }
         }
+
+        autostart_tape_unit = tapeunit;
+
         reboot_for_autostart(program_name, AUTOSTART_HASTAPE, runmode);
 
         return 0;
@@ -1922,6 +1946,7 @@ int autostart_tapecart(const char *file_name, void *unused)
 
     /* attach image and trigger autostart */
     if (tapecart_attach_tcrt(file_name, NULL) == 0) {
+        autostart_tape_unit = 1; /* FIXME: may be 2 on xpet */
         reboot_for_autostart(NULL, AUTOSTART_HASTAPE, AUTOSTART_MODE_RUN);
         return 0;
     }
@@ -1969,20 +1994,17 @@ int autostart_autodetect_opt_prgname(const char *file_prog_name,
 static void set_tapeport_device(int datasette, int tapecart)
 {
     /* first disable all devices, so we dont get any conflicts */
-    if (resources_set_int("Datasette", 0) < 0) {
-        log_error(LOG_ERR, "Failed to disable the Datasette.");
-    }
-    if (resources_set_int("TapecartEnabled", 0) < 0) {
+    if (resources_set_int("TapePort1Device", TAPEPORT_DEVICE_NONE) < 0) {
         log_error(LOG_ERR, "Failed to disable the Tapecart.");
     }
     /* now enable the one we want to enable */
     if (datasette) {
-        if (resources_set_int("Datasette", 1) < 0) {
+        if (resources_set_int("TapePort1Device", TAPEPORT_DEVICE_DATASETTE) < 0) {
             log_error(LOG_ERR, "Failed to enable the Datasette.");
         }
     }
     if (tapecart) {
-        if (resources_set_int("TapecartEnabled", 1) < 0) {
+        if (resources_set_int("TapePort1Device", TAPEPORT_DEVICE_TAPECART) < 0) {
             log_error(LOG_ERR, "Failed to enable the Tapecart.");
         }
     }
@@ -2021,31 +2043,33 @@ int autostart_autodetect(const char *file_name, const char *program_name,
         return 0;
     }
 
-    if (machine_class != VICE_MACHINE_C64DTV && machine_class != VICE_MACHINE_SCPU64) {
-        int datasette_temp, tapecart_temp;
+    /* DTV has no tape port, SCPU makes tape non operational */
+    if ((machine_class != VICE_MACHINE_C64DTV) &&
+        (machine_class != VICE_MACHINE_SCPU64)) {
+        int tapedevice_temp;
 
-        if (resources_get_int("Datasette", &datasette_temp) < 0) {
+        if (resources_get_int("TapePort1Device", &tapedevice_temp) < 0) {
             log_error(LOG_ERR, "Failed to get Datasette status.");
         }
-        if (resources_get_int("TapecartEnabled", &tapecart_temp) < 0) {
-            log_error(LOG_ERR, "Failed to get Tapecart status.");
-        }
 
-        set_tapeport_device(1, 0);
+        set_tapeport_device(1, 0);  /* select datasette on, tapecart off */
 
-        if (autostart_tape(file_name, program_name, program_number, runmode) == 0) {
+        if (autostart_tape(file_name, program_name, program_number, runmode, TAPEPORT_PORT_1) == 0) {
             log_message(autostart_log, "`%s' recognized as tape image.", file_name);
             return 0;
         }
 
-        set_tapeport_device(0, 1);
-
-        if (autostart_tapecart(file_name, NULL) == 0) {
-            log_message(autostart_log, "`%s' recognized as tapecart image.", file_name);
-            return 0;
+        /* tapecart can only be used with C64 (or C64 mode of C128) */
+        if ((machine_class == VICE_MACHINE_C64) &&
+            (machine_class == VICE_MACHINE_C128)) {
+            set_tapeport_device(0, 1); /* select datasette off, tapecart on */
+            if (autostart_tapecart(file_name, NULL) == 0) {
+                log_message(autostart_log, "`%s' recognized as tapecart image.", file_name);
+                return 0;
+            }
         }
 
-        set_tapeport_device(datasette_temp, tapecart_temp);
+        resources_set_int("TapePort1Device", tapedevice_temp);
     }
 
     if (autostart_snapshot(file_name, program_name) == 0) {

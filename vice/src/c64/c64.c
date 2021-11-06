@@ -136,6 +136,7 @@
 #include "userport_rtc_58321a.h"
 #include "userport_rtc_ds1307.h"
 #include "userport_superpad64.h"
+#include "userport_wic64.h"
 #include "vice-event.h"
 #include "vicii.h"
 #include "vicii-mem.h"
@@ -812,25 +813,10 @@ int machine_resources_init(void)
     }
 #endif
 #endif
-    /*
-     * This needs to be called before tapeport_resources_init(), otherwise
-     * the tapecart will fail to initialize due to the Datasette resource
-     * appearing after the Tapecart resources
-     */
-    if (datasette_resources_init() < 0) {
-        init_resource_fail("datasette");
-        return -1;
-    }
-    if (tapeport_resources_init() < 0) {
+    if (tapeport_resources_init(1) < 0) {
         init_resource_fail("tapeport");
         return -1;
     }
-#ifdef TAPEPORT_EXPERIMENTAL_DEVICES
-    if (tape_diag_586220_harness_resources_init() < 0) {
-        init_resource_fail("tape diag 586220 harness");
-        return -1;
-    }
-#endif
     if (c64_glue_resources_init() < 0) {
         init_resource_fail("c64 glue");
         return -1;
@@ -902,6 +888,10 @@ int machine_resources_init(void)
 #ifdef USERPORT_EXPERIMENTAL_DEVICES
     if (userport_diag_586220_harness_resources_init() < 0) {
         init_resource_fail("userport diag 586220 harness");
+        return -1;
+    }
+    if (userport_wic64_resources_init() < 0) {
+        init_resource_fail("userport wic64");
         return -1;
     }
 #endif
@@ -1087,16 +1077,6 @@ int machine_cmdline_options_init(void)
     }
     if (tapeport_cmdline_options_init() < 0) {
         init_cmdline_options_fail("tapeport");
-        return -1;
-    }
-#ifdef TAPEPORT_EXPERIMENTAL_DEVICES
-    if (tape_diag_586220_harness_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("tape diag 586220 harness");
-        return -1;
-    }
-#endif
-    if (datasette_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("datasette");
         return -1;
     }
     if (c64_glue_cmdline_options_init() < 0) {
@@ -1308,12 +1288,13 @@ void machine_specific_reset(void)
 
     serial_traps_reset();
 
+    /* These calls must be before the CIA initialization */
+    rs232drv_reset(); /* driver is used by both user- and expansion port ? */
+    userport_reset();
+
     ciacore_reset(machine_context.cia1);
     ciacore_reset(machine_context.cia2);
     sid_reset();
-
-    rs232drv_reset(); /* driver is used by both user- and expansion port ? */
-    rsuser_reset();
 
     printer_reset();
 
@@ -1345,9 +1326,8 @@ void machine_specific_powerup(void)
 
 void machine_specific_shutdown(void)
 {
-    /* and the tape */
-    tape_image_detach_internal(1);
-
+    tape_image_detach_internal(TAPEPORT_PORT_1 + 1);
+    
     /* and cartridge */
     cartridge_detach_image(-1);
 
@@ -1623,7 +1603,8 @@ static userport_port_props_t userport_props = {
     1,                     /* port has the pa3 pin */
     c64_userport_set_flag, /* port has the flag pin, set flag function */
     1,                     /* port has the pc pin */
-    1                      /* port has the cnt1, cnt2 and sp pins */
+    1,                     /* port has the cnt1, cnt2 and sp pins */
+    1                      /* port has the reset pin */
 };
 
 int machine_register_userport(void)

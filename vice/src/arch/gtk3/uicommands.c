@@ -56,12 +56,12 @@
 #include "uiapi.h"
 #include "ui.h"
 #include "uicommands.h"
+#include "uimachinemenu.h"
 #include "uimachinewindow.h"
 #include "widgethelpers.h"
 
 
 static gboolean controlport_swapped = FALSE;
-static gboolean userport_swapped = FALSE;
 
 
 /** \brief  Callback for the confirm-on-exit dialog
@@ -90,15 +90,6 @@ gboolean ui_get_controlport_swapped(void)
     return controlport_swapped;
 }
 
-
-/** \brief  Determine if user ports 1 & 2 are currently swapped.
- *
- * \return  bool
- */
-gboolean ui_get_userport_swapped(void)
-{
-    return userport_swapped;
-}
 
 
 /** \brief  Swap controlport devices 1 & 2
@@ -142,31 +133,11 @@ gboolean ui_action_toggle_controlport_swap(void)
 
     controlport_swapped = !controlport_swapped;
 
-    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_TOGGLE_CONTROLPORT_SWAP,
+    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_SWAP_CONTROLPORT_TOGGLE,
                                                controlport_swapped);
     return TRUE;
 }
 
-
-/** \brief  Swap userport joysticks
- *
- * \return  TRUE
- */
-gboolean ui_action_toggle_userport_swap(void)
-{
-    int joy3 = -1;
-    int joy4 = -1;
-
-    resources_get_int("JoyDevice3", &joy3);
-    resources_get_int("JoyDevice4", &joy4);
-    resources_set_int("JoyDevice3", joy4);
-    resources_set_int("JoyDevice4", joy3);
-
-    userport_swapped = !userport_swapped;
-    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_TOGGLE_USERPORT_SWAP,
-                                               userport_swapped);
-    return TRUE;
-}
 
 
 /** \brief  Toggle resource 'KeySetEnable'
@@ -207,14 +178,16 @@ gboolean ui_action_toggle_mouse_grab(void)
     mouse = !mouse;
 
     if (mouse) {
-       g_snprintf(title, sizeof(title),
-               /* TODO: get proper key+modifier string from ui data */
-               "VICE (%s) (Use %s+M to disable mouse grab)",
-               machine_get_name(), VICE_MOD_MASK_TEXT);
+        ui_menu_item_t *item = ui_get_vice_menu_item_by_name("mouse-grab-toggle");
+        gchar *name = gtk_accelerator_name(item->keysym, item->modifier);
+        g_snprintf(title, sizeof(title),
+                "VICE (%s) (Use %s to disable mouse grab)",
+                machine_get_name(), name);
+        g_free(name);
     } else {
        g_snprintf(title, sizeof(title),
-               "VICE (%s)",
-               machine_get_name());
+                "VICE (%s)",
+                machine_get_name());
     }
 
     window = ui_get_active_window();

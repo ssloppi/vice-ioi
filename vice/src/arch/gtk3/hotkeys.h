@@ -27,6 +27,7 @@
 #ifndef VICE_HOTKEYS_H
 #define VICE_HOTKEYS_H
 
+#include <gtk/gtk.h>
 #include <stdbool.h>
 
 
@@ -46,13 +47,26 @@
 #define VKM_DEFAULT_NAME    VKM_PREFIX##VKM_EXT
 
 
-int     hotkeys_resources_init(void);
-int     hotkeys_cmdline_options_init(void);
+/** \brief  Accepted GDK modifiers for hotkeys
+ *
+ * This is required to avoid keys like NumLock showing up in the accelerators.
+ * GDK_MOD1_MASK refers to Alt/Option.
+ */
+#define VKM_ACCEPTED_MODIFIERS \
+    (GDK_SHIFT_MASK|GDK_CONTROL_MASK|GDK_MOD1_MASK|GDK_SUPER_MASK|GDK_HYPER_MASK)
 
-void    hotkeys_init(void);
-void    hotkeys_shutdown(void);
 
-bool    hotkeys_parse(const char *path);
+int     ui_hotkeys_resources_init(void);
+int     ui_hotkeys_cmdline_options_init(void);
+
+void    ui_hotkeys_init(void);
+void    ui_hotkeys_shutdown(void);
+
+bool    ui_hotkeys_parse(const char *path);
+
+char *  ui_hotkeys_get_hotkey_string_for_action(const char *action);
+
+bool    ui_hotkeys_export(const char *path);
 
 #endif
 

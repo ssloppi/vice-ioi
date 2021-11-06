@@ -57,6 +57,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "archdep.h"
 #include "lib.h"
@@ -68,54 +69,54 @@
 
 #include "vice_gtk3.h"
 
-#include "ui.h"
-#include "settings_speed.h"
-#include "settings_keyboard.h"
-#include "settings_sound.h"
-#include "settings_autofire.h"
-#include "settings_autostart.h"
-#include "settings_drive.h"
-#include "settings_fsdevice.h"
-#include "settings_model.h"
-#include "settings_misc.h"
-#include "settings_ramreset.h"
-#include "settings_video.h"
-#include "settings_sampler.h"
-#include "settings_printer.h"
-#include "settings_controlport.h"
-#include "settings_joystick.h"
-#include "settings_soundchip.h"
-#include "settings_monitor.h"
-#include "settings_romset.h"
-#include "settings_snapshot.h"
 #ifdef HAVE_RAWNET
 # include "settings_ethernet.h"
 #endif
-#include "settings_rs232.h"
-#include "scpu64settingswidget.h"
-#include "c64dtvflashsettingswidget.h"
 
-/* I/O extension widgets */
-#include "settings_io.h"
+#include "ui.h"
+#include "c64dtvflashsettingswidget.h"
 #include "c64memhackswidget.h"
-#include "georamwidget.h"
-#include "reuwidget.h"
-#include "ramcartwidget.h"
 #include "dqbbwidget.h"
-#include "expertwidget.h"
-#include "isepicwidget.h"
 #include "easyflashwidget.h"
+#include "expertwidget.h"
+#include "georamwidget.h"
 #include "gmod2widget.h"
 #include "gmod3widget.h"
-#include "mmcrwidget.h"
-#include "mmc64widget.h"
 #include "ide64widget.h"
-#include "retroreplaywidget.h"
+#include "isepicwidget.h"
 #include "ltkernalwidget.h"
-#include "ramlinkwidget.h"
-#include "rexramfloppywidget.h"
+#include "mmc64widget.h"
+#include "mmcrwidget.h"
 #include "netplaywidget.h"
+#include "ramcartwidget.h"
+#include "ramlinkwidget.h"
+#include "retroreplaywidget.h"
+#include "reuwidget.h"
+#include "rexramfloppywidget.h"
+#include "scpu64settingswidget.h"
+#include "settings_autofire.h"
+#include "settings_autostart.h"
+#include "settings_controlport.h"
 #include "settings_default_cart.h"
+#include "settings_drive.h"
+#include "settings_fsdevice.h"
+#include "settings_hotkeys.h"
+#include "settings_io.h"
+#include "settings_joystick.h"
+#include "settings_keyboard.h"
+#include "settings_misc.h"
+#include "settings_model.h"
+#include "settings_monitor.h"
+#include "settings_printer.h"
+#include "settings_ramreset.h"
+#include "settings_romset.h"
+#include "settings_rs232.h"
+#include "settings_sampler.h"
+#include "settings_snapshot.h"
+#include "settings_sound.h"
+#include "settings_soundchip.h"
+#include "settings_speed.h"
+#include "settings_video.h"
 
 #ifdef HAVE_RAWNET
 # include "ethernetcartwidget.h"
@@ -879,6 +880,9 @@ static ui_settings_tree_node_t host_nodes_generic[] = {
     { "Autostart",
       "autostart",
       settings_autostart_widget_create, NULL },
+    { "Hotkeys",
+      "hotkeys",
+      settings_hotkeys_widget_create, NULL },
     { "Monitor",
       "monitor",
       settings_monitor_widget_create, NULL },
@@ -2338,6 +2342,17 @@ static int settings_old_pause_state;
 static GtkWidget *settings_window = NULL;
 
 
+/** \brief  Previous X position of settings dialog
+ */
+static gint settings_xpos = INT_MIN;
+
+
+/** \brief  Previous Y position of settings dialog
+ */
+static gint settings_ypos = INT_MIN;
+
+
+
 /** \brief  Reference to the 'content area' widget of the settings dialog
  */
 static GtkWidget *settings_grid = NULL;
@@ -2372,7 +2387,10 @@ static GtkTreePath *last_node_path = NULL;
 
 /** \brief  Handler for the "destroy" event of the main dialog
  *
- * \param[in]   widget      main dialog (unused)
+ * Stores the position of the dialog so it can be shown again at that
+ * position.
+ *
+ * \param[in]   widget      main dialog
  * \param[in]   data        extra event data (unused)
  */
 static void on_settings_dialog_destroy(GtkWidget *widget, gpointer data)
@@ -2881,6 +2899,8 @@ static void response_callback(GtkWidget *widget,
 /** \brief  Respond to window size changes
  *
  * This allows for quickly seeing if specific dialog is getting too large.
+ * It's also used to store the dialog position so it can be restored when
+ * respawning.
  *
  * The DIALOG_WIDTH_MAX and DIALOG_HEIGHT_MAX I sucked out of my thumb, since
  * due to window managers using different themes, we can't use 'proper' values,
@@ -2896,12 +2916,19 @@ static gboolean on_dialog_configure_event(GtkWidget *widget,
                                           GdkEvent *event,
                                           gpointer data)
 {
-#if 0
     if (event->type == GDK_CONFIGURE) {
         GdkEventConfigure *cfg = (GdkEventConfigure *)event;
+#if 0
         int width = cfg->width;
         int height = cfg->height;
-
+#endif
+        /* Update dialog position, using gtk_window_get_position() doesn't
+         * work, it reports the position of the dialog when it was spawned,
+         * not the position if it has been moved afterwards. */
+        settings_xpos = cfg->x;
+        settings_ypos = cfg->y;
+    }
+#if 0
         /* debug_gtk3("width %d, height %d.", width, height); */
         if (width > DIALOG_WIDTH_MAX || height > DIALOG_HEIGHT_MAX) {
             /* uncomment the following to get some 'help' while building
@@ -3145,6 +3172,15 @@ static gboolean ui_settings_dialog_create_and_activate_node_impl(gpointer user_d
     }
 
     gtk_widget_show_all(dialog);
+        /* XXX: Doesn't work on Wayland, which appears to be a bug since at least
+     *      2014 :)
+     */
+    if (settings_xpos > INT_MIN && settings_ypos > INT_MIN) {
+        /* restore previous position, if any */
+        debug_gtk3("Restoring previous position: (%d,%d).",
+                   settings_xpos, settings_ypos);
+        gtk_window_move(GTK_WINDOW(dialog), settings_xpos, settings_ypos);
+    }
 
     return FALSE;
 }

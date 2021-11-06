@@ -85,6 +85,11 @@
 #include "monitor_network.h"
 #include "monitor_binary.h"
 #include "montypes.h"
+
+#include "userport_io_sim.h"
+#include "joyport_io_sim.h"
+#include "joyport.h"
+
 #include "resources.h"
 #include "screenshot.h"
 #include "sysfile.h"
@@ -166,7 +171,7 @@ static int mon_console_close_on_leaving = 0;
 int sidefx = 0;
 int break_on_dummy_access = 0;
 RADIXTYPE default_radix;
-MEMSPACE default_memspace;
+MEMSPACE default_memspace = e_comp_space;
 static bool inside_monitor = false;
 static unsigned int instruction_count;
 static bool skip_jsrs;
@@ -224,14 +229,8 @@ static int disassemble_on_entry = 0;
 /* This gets initialized in monitor_init(). */
 monitor_cpu_type_t *monitor_cpu_for_memspace[NUM_MEMSPACES];
 
-struct supported_cpu_type_list_s {
-    monitor_cpu_type_t *monitor_cpu_type_p;
-    struct supported_cpu_type_list_s *next;
-};
-typedef struct supported_cpu_type_list_s supported_cpu_type_list_t;
-
 /* A linked list of supported monitor_cpu_types for each memspace */
-static supported_cpu_type_list_t *monitor_cpu_type_supported[NUM_MEMSPACES];
+supported_cpu_type_list_t *monitor_cpu_type_supported[NUM_MEMSPACES];
 
 struct monitor_cpu_type_list_s {
     monitor_cpu_type_t monitor_cpu_type;
@@ -637,12 +636,12 @@ bool check_drive_emu_level_ok(int drive_num)
 
 void monitor_cpu_type_set(const char *cpu_type)
 {
-    int serchcpu;
+    int searchcpu;
     monitor_cpu_type_t *monitor_cpu_type_p = NULL;
 
-    serchcpu = find_cpu_type_from_string(cpu_type);
-    if (serchcpu > -1) {
-        monitor_cpu_type_p = monitor_find_cpu_for_memspace(default_memspace, serchcpu);
+    searchcpu = find_cpu_type_from_string(cpu_type);
+    if (searchcpu > -1) {
+        monitor_cpu_type_p = monitor_find_cpu_for_memspace(default_memspace, searchcpu);
     }
     if (monitor_cpu_type_p) {
         monitor_cpu_for_memspace[default_memspace] = monitor_cpu_type_p;
@@ -1229,12 +1228,12 @@ void mon_reset_machine(int type)
     }
 }
 
-void mon_tape_ctrl(int command)
+void mon_tape_ctrl(int port, int command)
 {
     if ((command < 0) || (command > 6)) {
         mon_out("Unknown command.\n");
     } else {
-        datasette_control(command);
+        datasette_control(port, command);
     }
 }
 
@@ -1242,6 +1241,67 @@ void mon_cart_freeze(void)
 {
     if (mon_cart_cmd.cartridge_trigger_freeze != NULL) {
         (mon_cart_cmd.cartridge_trigger_freeze)();
+    } else {
+        mon_out("Unsupported.\n");
+    }
+}
+
+void mon_userport_set_output(int value)
+{ 
+    if (machine_class == VICE_MACHINE_CBM5x0) {
+        mon_out("Unsupported.\n");
+    } else if (value >= 0x00 && value <= 0xff) {
+        userport_io_sim_set_pbx_ddr_lines(0xff);   /* Set data direction to output for all PBx lines */
+        userport_io_sim_set_pbx_out_lines((uint8_t)value);
+    } else {
+        mon_out("Illegal value.\n");
+    }
+}
+
+void mon_joyport_set_output(int port, int value)
+{
+    int command_ok = 0;
+    int port_ok = 1;
+
+    if (value < 0x00 || value > 0xff) {
+        mon_out("Illegal value.\n");
+        return;
+    }
+
+    switch (machine_class) {
+        case VICE_MACHINE_C64:
+        case VICE_MACHINE_C128:
+        case VICE_MACHINE_CBM5x0:
+        case VICE_MACHINE_C64DTV:
+        case VICE_MACHINE_C64SC:
+        case VICE_MACHINE_SCPU64:
+            if (port == JOYPORT_1 || port == JOYPORT_2) {
+                command_ok = 1;
+            } else {
+                port_ok = 0;
+            }
+            break;
+        case VICE_MACHINE_VIC20:
+            if (port == JOYPORT_1) {
+                command_ok = 1;
+            } else {
+                port_ok = 0;
+            }
+            break;
+        case VICE_MACHINE_PLUS4:
+            if (port == JOYPORT_1 || port == JOYPORT_2 || port == JOYPORT_6) {
+                command_ok = 1;
+            } else {
+                port_ok = 0;
+            }
+            break;
+    }
+
+    if (command_ok) {
+        joyport_io_sim_set_ddr_lines(0xff, port);   /* Set data direction to output for all joystick lines */
+        joyport_io_sim_set_out_lines((uint8_t)value, port);
+    } else if (!port_ok) {
+        mon_out("Illegal port.\n");
     } else {
         mon_out("Unsupported.\n");
     }
@@ -1640,7 +1700,7 @@ static const cmdline_option_t cmdline_options[] =
       NULL, "Disable logging monitor output to a file" },
     { "-initbreak", CALL_FUNCTION, CMDLINE_ATTRIB_NEED_ARGS,
       monitor_set_initial_breakpoint, NULL, NULL, NULL,
-      "<value>", "Set an initial breakpoint for the monitor" },
+      "<value>", "Set an initial breakpoint for the monitor: <address>, ready, or reset" },
 #ifdef ARCHDEP_SEPERATE_MONITOR_WINDOW
     { "-keepmonopen", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
       NULL, NULL, "KeepMonitorOpen", (resource_value_t)1,
@@ -2815,6 +2875,7 @@ void monitor_abort(void)
 static void monitor_open(void)
 {
     supported_cpu_type_list_t *slist, *slist_next;
+    monitor_cpu_type_t *monitor_cpu_type_p = NULL;
     unsigned int dnr;
     int i;
 
@@ -2853,6 +2914,7 @@ static void monitor_open(void)
 
     uimon_notify_change();
 
+    /* free the list of supported CPUs */
     for (i = 0; i < NUM_MEMSPACES; i++) {
         slist = monitor_cpu_type_supported[i];
         while (slist != NULL) {
@@ -2862,6 +2924,7 @@ static void monitor_open(void)
         }
         monitor_cpu_type_supported[i] = NULL;
     }
+
     /* We should really be told what CPUs are supported by each memspace, but that will
      * require a bunch of changes, so for now we detect it based on the available registers. */
     find_supported_monitor_cpu_types(&monitor_cpu_type_supported[e_comp_space], mon_interfaces[e_comp_space]);
@@ -2872,14 +2935,39 @@ static void monitor_open(void)
     }
 
     /* Build array of pointers to monitor_cpu_type structs */
+
+    /* NOTE: We can't just init the struct(s) with the default CPU for each memspace, if
+             we did that, the monitor will not be able to eg single step on any CPU that
+             is not the first in the list. This loop makes sure the last active CPU is
+             still active in the monitor. */
+    for (i = 0; i < NUM_MEMSPACES; i++) {
+        slist = monitor_cpu_type_supported[i];
+        monitor_cpu_type_p = NULL;
+        /* check if the CPU was already set to an available type */
+        while (slist != NULL) {
+            if (slist->monitor_cpu_type_p == monitor_cpu_for_memspace[i]) {
+                monitor_cpu_type_p = slist->monitor_cpu_type_p;
+            }
+            slist = slist->next;
+        }
+        /* if no matching CPU was set, use the first supported one, if there is any */
+        if (monitor_cpu_type_p == NULL && monitor_cpu_type_supported[i]) {
+            monitor_cpu_for_memspace[i] = monitor_cpu_type_supported[i]->monitor_cpu_type_p;
+        }
+    }
+
+#if 0
     monitor_cpu_for_memspace[e_comp_space] =
         monitor_cpu_type_supported[e_comp_space]->monitor_cpu_type_p;
+
     for (dnr = 0; dnr < NUM_DISK_UNITS; dnr++) {
         monitor_cpu_for_memspace[monitor_diskspace_mem(dnr)] =
             monitor_cpu_type_supported[monitor_diskspace_mem(dnr)]->monitor_cpu_type_p;
     }
+#endif
     /* Safety precaution */
-    monitor_cpu_for_memspace[default_memspace] = monitor_cpu_for_memspace[default_memspace];
+    /* FIXME: this makes no sense at all */
+    /* monitor_cpu_for_memspace[default_memspace] = monitor_cpu_for_memspace[default_memspace]; */
 
     dot_addr[e_comp_space] = new_addr(e_comp_space, ((uint16_t)((monitor_cpu_for_memspace[e_comp_space]->mon_register_get_val)(e_comp_space, e_PC))));
 
@@ -3005,6 +3093,15 @@ void monitor_startup(MEMSPACE mem)
 {
     char prompt[40];
     char *p;
+    
+    if (inside_monitor) {
+        /*
+         * Drive cpu interrupt can enter the monitor .. and then the monitor
+         * can tell the drive to catch up, re-triggering the incomplete interrupt
+         * .. recursion, etc
+         */
+        return;
+    }
 
     if (mem != e_default_space) {
         default_memspace = mem;

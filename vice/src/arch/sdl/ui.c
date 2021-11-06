@@ -579,25 +579,21 @@ void ui_check_mouse_cursor(void)
     }
 }
 
-#ifdef MACOSX_SUPPORT
-#define VICE_MOD_MASK_TEXT "Option"
-#else
-#define VICE_MOD_MASK_TEXT "Alt"
-#endif
-
 void ui_set_mouse_grab_window_title(int enabled)
 {
     char title[256];
     char name[32];
+    char *mouse_key = kbd_get_path_keyname("Machine settings&Mouse emulation&Grab mouse events");
 
     if (machine_class != VICE_MACHINE_C64SC) {
         strcpy(name, machine_get_name());
     } else {
         strcpy(name, "C64 (x64sc)");
     }
-    if (enabled) {
-        snprintf(title, 256, "VICE: %s%s Use %s+M to disable mouse grab.",
-            name, archdep_extra_title_text(), VICE_MOD_MASK_TEXT);
+    if (enabled && mouse_key != NULL) {
+        snprintf(title, 256, "VICE: %s%s Use %s to disable mouse grab.",
+            name, archdep_extra_title_text(), mouse_key);
+        lib_free(mouse_key);
     } else {
         snprintf(title, 256, "VICE: %s%s", name, archdep_extra_title_text());
     }        
@@ -709,7 +705,8 @@ static int set_start_minimized(int val, void *param)
 # endif
 #endif
 
-static const resource_int_t resources_int[] = {
+static resource_int_t resources_int[] = {
+    /* caution: position of menukeys is hardcoded below */
     { "MenuKey", DEFAULT_MENU_KEY, RES_EVENT_NO, NULL,
       &sdl_ui_menukeys[0], set_ui_menukey, (void *)MENU_ACTION_NONE },
     { "MenuKeyUp", SDLK_UP, RES_EVENT_NO, NULL,
@@ -756,14 +753,22 @@ void ui_sdl_quit(void)
             return;
         }
     }
-    
     archdep_vice_exit(0);
 }
 
 /* Initialization  */
 int ui_resources_init(void)
 {
+#ifdef USE_SDLUI2
+    int i;
+#endif
     DBG(("%s", __func__));
+#ifdef USE_SDLUI2
+    /* this converts the default keycodes as needed */
+    for (i = 0; i < 13; i++) {
+        resources_int[i].factory_value = SDL2x_to_SDL1x_Keys(resources_int[i].factory_value);
+    }
+#endif
     if (resources_register_int(resources_int) < 0) {
         return -1;
     }
@@ -1010,6 +1015,14 @@ int uicolor_set_palette(struct video_canvas_s *c, const struct palette_s *palett
 {
     DBG(("%s", __func__));
     return 0;
+}
+
+
+/* FIXME: temporary stub to support calling ui_hotkeys_init() from src/main.c
+ */
+void ui_hotkeys_init(void)
+{
+    /* NOP */
 }
 
 /* ---------------------------------------------------------------------*/

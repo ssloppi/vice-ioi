@@ -75,6 +75,8 @@
 # When a bigger spaced key is used,
 # it uses the upper left most key value.
 
+# Positional Mapping, US Layout, VIC20, SDL
+
 # note: For some reason SDL does not get keyboard events for "dead keys" at all,
 #       so a "nodeadkeys" layout must be used. CAUTION: apparently SDL generates
 #       some tables internally at startup - switching the host layout while

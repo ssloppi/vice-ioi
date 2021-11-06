@@ -18,6 +18,9 @@ palettes = \
 	yape-ntsc.vpl \
 	colodore_ted.vpl
 
+gtk3_hotkeys = \
+	gtk3-hotkeys.vhk
+
 gtk3_keymaps = \
 	gtk3_pos.vkm \
 	gtk3_sym.vkm \
@@ -25,17 +28,20 @@ gtk3_keymaps = \
 	gtk3_sym_de.vkm
 
 sdl_keymaps = \
-	sdl_hotkeys.vkm \
 	sdl_sym_de.vkm \
+	sdl_sym.vkm \
 	sdl_pos_fr.vkm \
 	sdl_pos.vkm
 
+sdl_hotkeys = \
+	sdl-hotkeys.vhk
+
 if SDL_COMPILE
-plus4_DATA = $(roms) $(romsets) $(palettes) $(sdl_keymaps)
+plus4_DATA = $(roms) $(romsets) $(palettes) $(sdl_keymaps) $(sdl_hotkeys)
 
-EXTRA_DIST = $(plus4_DATA) $(gtk3_keymaps)
+EXTRA_DIST = $(plus4_DATA) $(gtk3_keymaps) $(gtk3_hotkeys)
 else
-plus4_DATA = $(roms) $(romsets) $(palettes) $(gtk3_keymaps)
+plus4_DATA = $(roms) $(romsets) $(palettes) $(gtk3_keymaps) $(gtk3_hotkeys)
 
-EXTRA_DIST = $(plus4_DATA) $(sdl_keymaps)
+EXTRA_DIST = $(plus4_DATA) $(sdl_keymaps) $(sdl_hotkeys)
 endif

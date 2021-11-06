@@ -61,6 +61,7 @@
 #include "kbd.h"
 #include "lib.h"
 #include "log.h"
+#include "hotkeys.h"
 #include "machine.h"
 #include "mainlock.h"
 #include "monitor.h"
@@ -115,6 +116,8 @@ static int set_fullscreen_state(int val, void *param);
 static int set_fullscreen_decorations(int val, void *param);
 static int set_pause_on_settings(int val, void *param);
 static int set_autostart_on_doubleclick(int val, void *param);
+static int set_settings_node_path(const char *val, void *param);
+
 
 /*****************************************************************************
  *                  Defines, enums, type declarations                        *
@@ -184,6 +187,13 @@ static int fullscreen_enabled = 0;
  * Used bt the resource "FullscreenDecorations".
  */
 static int fullscreen_has_decorations = 0;
+
+
+/** \brief  Settings node to activate after booting the emulator
+ *
+ * Used by the `-settings-node` command line option
+ */
+static const char *settings_node_path = NULL;
 
 
 /** \brief  Row numbers of the various widgets packed in a main GtkWindow
@@ -352,6 +362,9 @@ static const cmdline_option_t cmdline_options_common[] =
     { "+autostart-on-doubleclick", SET_RESOURCE, CMDLINE_ATTRIB_NONE,
         NULL, NULL, "AutostartOnDoubleclick", (void*)0,
         NULL, "Open files on doubleclick" },
+    { "-settings-node", CALL_FUNCTION, CMDLINE_ATTRIB_NEED_ARGS,
+        set_settings_node_path, NULL, NULL, NULL,
+        "settings-node", "Open settings dialog at <settings-node>" },
     CMDLINE_LIST_END
 };
 
@@ -883,7 +896,7 @@ gboolean ui_action_toggle_fullscreen(void)
         gtk_window_unfullscreen(window);
     }
 
-    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_TOGGLE_FULLSCREEN,
+    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_FULLSCREEN_TOGGLE,
                                                is_fullscreen);
     ui_update_fullscreen_decorations();
     return TRUE;
@@ -897,7 +910,7 @@ gboolean ui_action_toggle_fullscreen(void)
 gboolean ui_action_toggle_fullscreen_decorations(void)
 {
     fullscreen_has_decorations = !fullscreen_has_decorations;
-    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_TOGGLE_FULLSCREEN_DECORATIONS,
+    ui_set_gtk_check_menu_item_blocked_by_name(ACTION_FULLSCREEN_DECORATIONS_TOGGLE,
                                                fullscreen_has_decorations);
     ui_update_fullscreen_decorations();
     return TRUE;
@@ -1132,6 +1145,7 @@ static int set_window_ypos(int val, void *param)
 }
 
 
+/* FIXME: Why is this here? */
 #ifdef COMPYX_LAMER
 /** \brief  Set the 'AutostartOnDoubleclick' resource
  *
@@ -1146,6 +1160,27 @@ static int set_autostart_on_doubleclick(int val, void *param)
     return 0;
 }
 #endif
+
+
+/** \brief  Set settings node path to activate on UI startup
+ *
+ * Triggers opening the settings dialog at node \a val once when starting VICE.
+ *
+ * Useful for working on settings dialogs, avoid having to click through the UI.
+ * For example: `x64sc -settings-node peripheral/drive` will open the drive
+ * settings.
+ *
+ * \param[in]   val     setting node path
+ * \param[in]   param   extra data (unused);
+ *
+ * \return  0
+ */
+static int set_settings_node_path(const char *val, void *param)
+{
+    debug_gtk3("Activating settings node '%s'.", val);
+    settings_node_path = val;
+    return 0;   /* we won't know if the path is valid until later */
+}
 
 
 /*
@@ -1406,7 +1441,6 @@ void ui_create_main_window(video_canvas_t *canvas)
     GtkWidget *crt_controls;
     GtkWidget *mixer_controls;
 
-    GtkWidget *kbd_widget;
     int kbd_status = 0;
     int mouse_grab = 0;
 
@@ -1446,8 +1480,12 @@ void ui_create_main_window(video_canvas_t *canvas)
     if (!mouse_grab) {
         g_snprintf(title, 256, "VICE (%s)", machine_get_name());
     } else {
-        g_snprintf(title, 256, "VICE (%s) (Use %s+M to disable mouse grab)",
-                machine_get_name(), VICE_MOD_MASK_TEXT);
+        ui_menu_item_t *item = ui_get_vice_menu_item_by_name("mouse-grab-toggle");
+        gchar *name = gtk_accelerator_name(item->keysym, item->modifier);
+
+        g_snprintf(title, 256, "VICE (%s) (Use %s to disable mouse grab)",
+                machine_get_name(), name);
+        g_free(name);
     }
 
     gtk_window_set_title(GTK_WINDOW(new_window), title);
@@ -1615,16 +1653,7 @@ void ui_create_main_window(video_canvas_t *canvas)
         if (resources_get_int("KbdStatusbar", &kbd_status) < 0) {
             kbd_status = 0;
         }
-    } else {
-        kbd_status = 0;
-    }
-
-    kbd_widget = gtk_grid_get_child_at(GTK_GRID(status_bar), 0, 3);
-
-    if (kbd_status) {
-        gtk_widget_show_all(kbd_widget);
-    } else {
-        gtk_widget_hide(kbd_widget);
+        ui_statusbar_set_kbd_debug(kbd_status);
     }
 
     if (grid != NULL) {
@@ -1637,6 +1666,14 @@ void ui_create_main_window(video_canvas_t *canvas)
                 "button-press-event",
                 G_CALLBACK(rendering_area_event_handler),
                 new_window);
+    }
+
+    /* activate settings dialog at a specific node if requested via the
+     * -settings-node command line option
+     */
+    if (settings_node_path != NULL) {
+        ui_settings_dialog_create_and_activate_node(settings_node_path);
+        settings_node_path = NULL;
     }
 }
 
@@ -1719,6 +1756,9 @@ void ui_destroy_main_window(int index)
  */
 int ui_cmdline_options_init(void)
 {
+    if (ui_hotkeys_cmdline_options_init() != 0) {
+        return -1;
+    }
     return cmdline_register_options(cmdline_options_common);
 }
 
@@ -1771,8 +1811,6 @@ int ui_init(void)
     GVariant *variant;
     GtkSettings *settings_default;
 
-    ioi_input_queue_init();
-
     /*
      * Make sure F10 doesn't trigger the menu bar
      *
@@ -1781,7 +1819,6 @@ int ui_init(void)
      */
     settings_default = gtk_settings_get_default();
     g_object_set(settings_default, "gtk-menu-bar-accel", "F20", NULL);
-
 
     if (!uidata_init()) {
         log_error(LOG_ERR,
@@ -1921,6 +1958,9 @@ int ui_resources_init(void)
         }
     }
 
+    /* initialize custom hotkeys resources */
+    ui_hotkeys_resources_init();
+
     for (i = 0; i < NUM_WINDOWS; ++i) {
         ui_resources.canvas[i] = NULL;
         ui_resources.window_widget[i] = NULL;
@@ -1946,6 +1986,7 @@ void ui_shutdown(void)
 {
     uidata_shutdown();
     ui_statusbar_shutdown();
+    ui_hotkeys_shutdown();
 }
 
 
@@ -2222,7 +2263,6 @@ void ui_exit(void)
     archdep_unregister_cbmfont();
 
     mainlock_release();
-    ioi_input_queue_shutdown();
 }
 
 /** \brief  Send current light pen state to the emulator core for all windows
@@ -2274,7 +2314,9 @@ void ui_enable_crt_controls(int enabled)
          * Appearently setting a size of 1x1 pixels forces Gtk3 to render the
          * window to the appropriate (minimum) size,
          */
+#if 0
         gtk_window_resize(GTK_WINDOW(window), 1, 1);
+#endif
     }
 }
 
@@ -2308,7 +2350,9 @@ void ui_enable_mixer_controls(int enabled)
          * Appearently setting a size of 1x1 pixels forces Gtk3 to render the
          * window to the appropriate (minimum) size,
          */
+#if 0
         gtk_window_resize(GTK_WINDOW(window), 1, 1);
+#endif
     }
 }
 
@@ -2326,3 +2370,6 @@ GtkWidget *ui_get_window_by_index(int index)
     }
     return ui_resources.window_widget[index];
 }
+
+
+

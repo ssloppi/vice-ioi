@@ -330,16 +330,7 @@ int machine_resources_init(void)
         init_resource_fail("drive");
         return -1;
     }
-    /*
-     * This needs to be called before tapeport_resources_init(), otherwise
-     * the tapecart will fail to initialize due to the Datasette resource
-     * appearing after the Tapecart resources
-     */
-    if (datasette_resources_init() < 0) {
-        init_resource_fail("datasette");
-        return -1;
-    }
-    if (tapeport_resources_init() < 0) {
+    if (tapeport_resources_init(1) < 0) {
         init_resource_fail("tapeport");
         return -1;
     }
@@ -525,10 +516,6 @@ int machine_cmdline_options_init(void)
     }
     if (tapeport_cmdline_options_init() < 0) {
         init_cmdline_options_fail("tapeport");
-        return -1;
-    }
-    if (datasette_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("datasette");
         return -1;
     }
     if (acia1_cmdline_options_init() < 0) {
@@ -901,7 +888,7 @@ void machine_specific_powerup(void)
 void machine_specific_shutdown(void)
 {
     /* and the tape */
-    tape_image_detach_internal(1);
+    tape_image_detach_internal(TAPEPORT_PORT_1 + 1);
 
     ciacore_shutdown(machine_context.cia1);
     tpicore_shutdown(machine_context.tpi1);

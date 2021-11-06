@@ -45,16 +45,6 @@
 
 #include "kbd.h"
 
-#include <windows.h>
-#include <tchar.h>
-
-#define IOI_INPUT_QUEUE_SIZE 256
-
-int *pBufIQ; // pointer to shared data
-HANDLE hMapFileIQ;
-TCHAR VICE_IOI_INPUT_QUEUE_NAME[] = TEXT("VICE_IOI_INPUT_QUEUE");
-int input_queue_pointer =  0;
-
 
 /** \brief  Initialize keyboard handling
  */
@@ -399,60 +389,6 @@ static int removepressedkey(GdkEvent *report, int *key, int *mod)
     return 0;
 }
 
-iq_key_t ioi_input_queue_poll(void)
-{
-    iq_key_t iq_key = { .keycode = -1, .press = 0, .release = 0 };
-
-    if (pBufIQ)
-    {
-        int keycode = pBufIQ[input_queue_pointer];
-
-        if (keycode > -1)
-        {
-            iq_key.keycode = keycode;
-
-            pBufIQ[input_queue_pointer] = -1;
-            input_queue_pointer++;
-            if (input_queue_pointer >= IOI_INPUT_QUEUE_SIZE) input_queue_pointer = 0;
-
-            int pressValue = pBufIQ[input_queue_pointer];
-
-            iq_key.press = pressValue == 1 ? 1 : 0;
-            iq_key.release = pressValue == 0 ? 1 : 0;
-
-            pBufIQ[input_queue_pointer] = -1;
-            input_queue_pointer++;
-            if (input_queue_pointer >= IOI_INPUT_QUEUE_SIZE) input_queue_pointer = 0;
-        }
-    }
-
-    return iq_key;
-}
-
-
-static gboolean ioi_input_queue_poll_all(void)
-{
-    gboolean retVal = FALSE;
-    iq_key_t iq_key = ioi_input_queue_poll();
-
-    while (iq_key.keycode > -1)
-    {
-        if (iq_key.press == 1)
-        {
-            keyboard_key_pressed((signed long)iq_key.keycode, 0);
-            retVal = TRUE;
-        }
-        else if (iq_key.release == 1)
-        {
-            keyboard_key_released((signed long)iq_key.keycode, 0);
-            retVal = FALSE;
-        }
-        iq_key = ioi_input_queue_poll();
-    }
-    return retVal;
-}
-
-
 /** \brief  Gtk keyboard event handler
  *
  * \param[in]   w       widget triggering the event
@@ -467,8 +403,6 @@ static gboolean kbd_event_handler(GtkWidget *w, GdkEvent *report, gpointer gp)
     int mod;
 
     key = report->key.keyval;
-    ioi_input_queue_poll_all();
-
     switch (report->type) {
         case GDK_KEY_PRESS:
             /* fprintf(stderr, "GDK_KEY_PRESS: %u %04x.\n",
@@ -508,6 +442,11 @@ static gboolean kbd_event_handler(GtkWidget *w, GdkEvent *report, gpointer gp)
 
             if (gtk_window_activate_key(GTK_WINDOW(w), (GdkEventKey *)report)) {
                 /* mnemonic or accelerator was found and activated. */
+                /* release all previously pressed keys to prevent stuck keys */
+                keyspressed = 0;
+                kbd_fix_shift_clear();
+                keyboard_key_clear();
+                kbd_sync_caps_lock();
                 return TRUE;
             }
 
@@ -665,24 +604,4 @@ void kbd_connect_handlers(GtkWidget *widget, void *data)
             G_OBJECT(widget),
             "focus-out-event",
             G_CALLBACK(kbd_event_handler), data);
-}
-
-void ioi_input_queue_init(void)
-{
-    hMapFileIQ = OpenFileMapping(FILE_MAP_ALL_ACCESS, 0, VICE_IOI_INPUT_QUEUE_NAME);
-    if (hMapFileIQ == NULL) {
-        debug_gtk3(" - Could not open file mapping object (%ld).", GetLastError());
-    }
-
-    pBufIQ = (int*) MapViewOfFile(hMapFileIQ, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-    if (!pBufIQ) {
-        debug_gtk3(" - Could not map view of file (%ld).", GetLastError());
-        CloseHandle(hMapFileIQ);
-    }
-}
-
-void ioi_input_queue_shutdown(void)
-{
-    UnmapViewOfFile(pBufIQ);
-    CloseHandle(hMapFileIQ);
 }

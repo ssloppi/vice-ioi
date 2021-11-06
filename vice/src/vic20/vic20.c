@@ -717,16 +717,7 @@ int machine_resources_init(void)
         return -1;
     }
 #endif
-    /*
-     * This needs to be called before tapeport_resources_init(), otherwise
-     * the tapecart will fail to initialize due to the Datasette resource
-     * appearing after the Tapecart resources
-     */
-    if (datasette_resources_init() < 0) {
-        init_resource_fail("datasette");
-        return -1;
-    }
-    if (tapeport_resources_init() < 0) {
+    if (tapeport_resources_init(1) < 0) {
         init_resource_fail("tapeport");
         return -1;
     }
@@ -942,10 +933,6 @@ int machine_cmdline_options_init(void)
         init_cmdline_options_fail("tapeport");
         return -1;
     }
-    if (datasette_cmdline_options_init() < 0) {
-        init_cmdline_options_fail("datasette");
-        return -1;
-    }
     if (cartridge_cmdline_options_init() < 0) {
         init_cmdline_options_fail("cartridge");
         return -1;
@@ -1157,11 +1144,13 @@ void machine_specific_reset(void)
     vic_reset();
     sid_reset();
 
+    /* These calls must be before the VIA initialization */
+    rs232drv_reset();
+    userport_reset();
+
     viacore_reset(machine_context.ieeevia1);
     viacore_reset(machine_context.ieeevia2);
 
-    rs232drv_reset();
-    rsuser_reset();
 #ifdef HAVE_MIDI
     midi_reset();
 #endif
@@ -1182,7 +1171,7 @@ void machine_specific_powerup(void)
 void machine_specific_shutdown(void)
 {
     /* and the tape */
-    tape_image_detach_internal(1);
+    tape_image_detach_internal(TAPEPORT_PORT_1 + 1);
 
     /* and cartridge */
     cartridge_detach_image(-1);
@@ -1389,7 +1378,8 @@ static userport_port_props_t userport_props = {
     0,                       /* port does NOT have the pa3 pin */
     vic20_userport_set_flag, /* port has the flag pin, set flag function */
     0,                       /* port does NOT have the pc pin */
-    1                        /* port does have the cnt1, cnt2 and sp pins */
+    1,                       /* port does have the cnt1, cnt2 and sp pins */
+    1                        /* port has the reset pin */
 };
 
 int machine_register_userport(void)
