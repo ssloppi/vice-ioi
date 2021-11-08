@@ -105,33 +105,34 @@ static ui_accel_data_t *ui_accel_data_new(GtkWidget *widget, ui_menu_item_t *ite
 
 /** \brief  Destructor for accelerator data
  *
- * FIXME:   this doesn't get triggered
+ * Triggered when disconnecting an accelerator from the accelerator group.
  *
  * \param[in,out]   data    accelerator data
  * \param[in]       closure closure (unused)
  */
 static void ui_accel_data_delete(gpointer data, GClosure *closure)
 {
-    debug_gtk3("Holy Shit, this got triggered!!\n");
-#if 0
-    lib_free(data);
-#endif
+    if (data != NULL) {
+        lib_free(data);
+    }
 }
 
 
 /** \brief  Handler for the 'destroy' event of a menu item
- *
- * This 'hack' is needed since the 'finalize' callback of the GClosures we use
- * for accelerators doesn't get called, which means the accelerator data doesn't
- * get cleaned up, which means we leak memory.
  *
  * \param[in]       item        menu item
  * \param[in,out]   accel_data  accelator data (optional)
  */
 static void on_menu_item_destroy(GtkWidget *item, gpointer accel_data)
 {
-    if (accel_data != NULL) {
-        lib_free(accel_data);
+    GtkAccelLabel *label;
+    guint keysym;
+    guint mask;
+
+    label = GTK_ACCEL_LABEL(gtk_bin_get_child(GTK_BIN(item)));
+    if (label != NULL) {
+        gtk_accel_label_get_accel(label, &keysym, &mask);
+        gtk_accel_group_disconnect_key(accel_group, keysym, mask);
     }
 }
 
@@ -248,6 +249,11 @@ GtkWidget *ui_menu_add(GtkWidget *menu, ui_menu_item_t *items)
         if (item != NULL) {
 
             if (items[i].keysym != 0 && items[i].callback != NULL) {
+
+                /* TODO: refactor to use ui_menu_set_accel_via_vice_item(),
+                 *       but copy the comments below to that function!!!
+                 */
+
                 GClosure *accel_closure;
 
                 /* Normally you would use gtk_widget_add_accelerator
@@ -318,7 +324,6 @@ void ui_menu_init_accelerators(GtkWidget *window)
 GtkWidget *ui_get_gtk_submenu_item_by_name(GtkWidget *submenu, const char *name)
 {
     GList *node = gtk_container_get_children(GTK_CONTAINER(submenu));
-
 #if 0
     debug_gtk3("Iterating children of submenu.");
 #endif
@@ -338,8 +343,65 @@ GtkWidget *ui_get_gtk_submenu_item_by_name(GtkWidget *submenu, const char *name)
 #endif
                     return GTK_WIDGET(item);
                 }
-            } else {
+            }
+            /* recurse into submenu if present */
+            item = gtk_menu_item_get_submenu(GTK_MENU_ITEM(item));
+            if (item != NULL) {
                 item = ui_get_gtk_submenu_item_by_name(item, name);
+                if (item != NULL) {
+                    return item;
+                }
+            }
+        }
+        node = node->next;
+    }
+
+    return NULL;
+}
+
+
+/* for 'live' changing of hotkeys */
+/** \brief  Recursively look up \a mask and \a keyval in  \a submenu
+ *
+ * \param[in]   submenu GtkMenuItem
+ * \param[in]   mask    Gdk modifiers
+ * \param[in]   keysym  Gdk keysym
+ *
+ * \return  GtkMenuItem or `NULL` when not found
+ */
+GtkWidget *ui_get_gtk_submenu_item_by_hotkey(GtkWidget *submenu,
+                                             GdkModifierType mask,
+                                             guint keysym)
+{
+    GList *node = gtk_container_get_children(GTK_CONTAINER(submenu));
+
+#if 0
+    debug_gtk3("Iterating children of submenu.");
+#endif
+    while (node != NULL) {
+        GtkWidget *item = node->data;
+        if (GTK_IS_CONTAINER(item)) {
+
+            GtkAccelLabel *label;
+            guint item_keysym;
+            guint item_mask;
+
+            label = GTK_ACCEL_LABEL(gtk_bin_get_child(GTK_BIN(item)));
+            gtk_accel_label_get_accel(label,
+                                      &item_keysym,
+                                      &item_mask);
+
+
+#if 0
+                debug_gtk3("Checking action-name '%s' against '%s'.",
+                        action_name, name);
+#endif
+            if (item_keysym == keysym && item_mask == mask) {
+                return item;
+            }
+            item = gtk_menu_item_get_submenu(GTK_MENU_ITEM(item));
+            if (item != NULL) {
+                item = ui_get_gtk_submenu_item_by_hotkey(item, keysym, mask);
                 if (item != NULL) {
                     return item;
                 }
@@ -415,4 +477,74 @@ void ui_set_gtk_check_menu_item_blocked_by_resource(const char *name,
             ui_set_gtk_check_menu_item_blocked(item, (gboolean)value);
         }
     }
+}
+
+#if 0
+/** \brief  Get accelerator group used for all accelerators
+ *
+ * \return  accelerator group
+ *
+ * \todo    Can probably be removed once the code in settings_hotkeys.c is
+ *          refactored.
+ */
+GtkAccelGroup *ui_menu_get_accel_group(void)
+{
+    return accel_group;
+}
+#endif
+
+
+/** \brief  Remove accelerator from a menu item
+ *
+ * \param[in]   item    vice menu item
+ *
+ * \return  boolean
+ */
+gboolean ui_menu_remove_accel_via_vice_item(ui_menu_item_t *item)
+{
+    return gtk_accel_group_disconnect_key(accel_group,
+                                          item->keysym,
+                                          item->modifier);
+}
+
+
+/** \brief  Set accelerator on \a item_gtk using \a item_vice
+ *
+ * Sets up a closure that triggers a menu item's handler.
+ * Using gtk_menu_item_add_accelerator() we lose the accelerators once we
+ * hide the menu (fullscreen). With closures in an accelerator group we can
+ * still trigger the handlers, even in fullscreen.
+ *
+ * \param[in]   item_gtk    Gtk menu item
+ * \param[in]   item_vice   VICE menu item
+ */
+void ui_menu_set_accel_via_vice_item(GtkWidget *item_gtk,
+                                     ui_menu_item_t *item_vice)
+{
+    GtkWidget *child;
+    GClosure *accel_closure;
+    ui_accel_data_t *accel_data;
+
+    accel_data = ui_accel_data_new(item_gtk, item_vice);
+    accel_closure = g_cclosure_new(G_CALLBACK(handle_accelerator),
+                                   accel_data,
+                                   ui_accel_data_delete);
+    if (item_vice->unlocked) {
+        gtk_accel_group_connect(accel_group,
+                                item_vice->keysym,
+                                item_vice->modifier,
+                                GTK_ACCEL_MASK,
+                                accel_closure);
+    } else {
+        vice_locking_gtk_accel_group_connect(accel_group,
+                                             item_vice->keysym,
+                                             item_vice->modifier,
+                                             GTK_ACCEL_MASK,
+                                             accel_closure);
+    }
+
+    child = gtk_bin_get_child(GTK_BIN(item_gtk));
+    gtk_accel_label_set_accel(GTK_ACCEL_LABEL(child),
+                              item_vice->keysym,
+                              item_vice->modifier);
 }

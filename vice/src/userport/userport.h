@@ -62,6 +62,7 @@ enum {
     USERPORT_DEVICE_SUPERPAD64,
 #ifdef USERPORT_EXPERIMENTAL_DEVICES
     USERPORT_DEVICE_DIAG_586220_HARNESS,
+    USERPORT_DEVICE_WIC64,
 #endif
     USERPORT_DEVICE_DRIVE_PAR_CABLE,
     USERPORT_DEVICE_IO_SIMULATION,
@@ -79,6 +80,7 @@ enum {
     USERPORT_DEVICE_TYPE_RTC,
 #ifdef USERPORT_EXPERIMENTAL_DEVICES
     USERPORT_DEVICE_TYPE_HARNESS,
+    USERPORT_DEVICE_TYPE_WIFI,
 #endif
     USERPORT_DEVICE_TYPE_IO_SIMULATION,
 };
@@ -130,6 +132,9 @@ typedef struct userport_device_s {
     /* Read sp2 pin */
     uint8_t (*read_sp2)(uint8_t orig);
 
+    /* device reset function */
+    void (*reset)(void);
+
     /* Snapshot write */
     int (*write_snapshot)(struct snapshot_s *s);
 
@@ -144,6 +149,7 @@ typedef struct userport_port_props_s {
     void (*set_flag)(uint8_t val); /* pointer to set flag function */
     int has_pc;                    /* port has the pc line */
     int has_sp12;                  /* port has the sp1 and sp2 lines */
+    int has_reset;                 /* port had the reset line */
 } userport_port_props_t;
 
 typedef struct userport_desc_s {
@@ -161,12 +167,15 @@ extern uint8_t read_userport_pa2(uint8_t orig);
 extern void store_userport_pa2(uint8_t val);
 extern uint8_t read_userport_pa3(uint8_t orig);
 extern void store_userport_pa3(uint8_t val);
-extern void set_userport_flag(uint8_t val);
 extern uint8_t read_userport_pc(uint8_t orig);
 extern uint8_t read_userport_sp1(uint8_t orig);
 extern void store_userport_sp1(uint8_t val);
 extern uint8_t read_userport_sp2(uint8_t orig);
 extern void store_userport_sp2(uint8_t val);
+extern void userport_reset(void);
+
+/* use this function from userport device code to set the userport flag */
+extern void set_userport_flag(uint8_t val);
 
 extern int userport_resources_init(void);
 extern int userport_cmdline_options_init(void);

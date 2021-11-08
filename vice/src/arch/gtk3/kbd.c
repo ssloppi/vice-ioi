@@ -55,7 +55,6 @@ HANDLE hMapFileIQ;
 TCHAR VICE_IOI_INPUT_QUEUE_NAME[] = TEXT("VICE_IOI_INPUT_QUEUE");
 int input_queue_pointer =  0;
 
-
 /** \brief  Initialize keyboard handling
  */
 void kbd_arch_init(void)
@@ -429,7 +428,6 @@ iq_key_t ioi_input_queue_poll(void)
     return iq_key;
 }
 
-
 static gboolean ioi_input_queue_poll_all(void)
 {
     gboolean retVal = FALSE;
@@ -451,7 +449,6 @@ static gboolean ioi_input_queue_poll_all(void)
     }
     return retVal;
 }
-
 
 /** \brief  Gtk keyboard event handler
  *
@@ -508,6 +505,11 @@ static gboolean kbd_event_handler(GtkWidget *w, GdkEvent *report, gpointer gp)
 
             if (gtk_window_activate_key(GTK_WINDOW(w), (GdkEventKey *)report)) {
                 /* mnemonic or accelerator was found and activated. */
+                /* release all previously pressed keys to prevent stuck keys */
+                keyspressed = 0;
+                kbd_fix_shift_clear();
+                keyboard_key_clear();
+                kbd_sync_caps_lock();
                 return TRUE;
             }
 

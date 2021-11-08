@@ -141,9 +141,10 @@ static const mon_cmds_t mon_cmd_array[] = {
     },
 
     { "next", "n",
-      NULL,
-      "Advance to the next instruction.  Subroutines are treated as\n"
-      "a single instruction.",
+      "[<count>]",
+      "Advance to the next instruction(s).  COUNT allows stepping\n"
+      "more than a single instruction at a time. Subroutines are\n"
+      "treated as a single instruction (\"step over\").",
       NO_FILENAME_ARG
     },
 
@@ -163,7 +164,7 @@ static const mon_cmds_t mon_cmd_array[] = {
     { "return", "ret",
       NULL,
       "Continues execution and returns to the monitor just after the next\n"
-      "RTS or RTI is executed.",
+      "RTS or RTI is executed (\"step out\").",
       NO_FILENAME_ARG
     },
 
@@ -176,7 +177,7 @@ static const mon_cmds_t mon_cmd_array[] = {
     { "step", "z",
       "[<count>]",
       "Single-step through instructions.  COUNT allows stepping\n"
-      "more than a single instruction at a time.",
+      "more than a single instruction at a time (\"step into\").",
       NO_FILENAME_ARG
     },
 
@@ -561,8 +562,8 @@ static const mon_cmds_t mon_cmd_array[] = {
 
     { "@", "",
       "<disk command>",
-      "Perform a disk command on the currently attached disk image on drive 8.\n"
-      "The specified disk command is sent to the drive's channel #15.",
+      "Perform a disk command on the currently attached disk image on virtual\n"
+      "drive 8.",
       NO_FILENAME_ARG
     },
 
@@ -705,6 +706,18 @@ static const mon_cmds_t mon_cmd_array[] = {
       NO_FILENAME_ARG
     },
 
+    { "updb", "",
+      "<value>",
+      "Update the simulated userport output value.",
+      NO_FILENAME_ARG
+    },
+
+    { "jpdb", "",
+      "<port> <value>",
+      "Update the simulated joyport output value.",
+      NO_FILENAME_ARG
+    },
+
     { "help", "?",
       "[<Command>]",
       "If no argument is given, prints out a list of all available commands\n"
@@ -788,6 +801,13 @@ static const mon_cmds_t mon_cmd_array[] = {
       "Turn tracing of every instruction executed by the main CPU\n"
       "on or off. If the argument is 'toggle' then the current mode\n"
       "is switched.",
+      NO_FILENAME_ARG
+    },
+
+    { "warp", "",
+      "[on|off|toggle]",
+      "Turn warp mode on or off. If the argument is 'toggle' then the current mode\n"
+      "is toggled. When no argument is given the current mode is displayed.",
       NO_FILENAME_ARG
     },
 

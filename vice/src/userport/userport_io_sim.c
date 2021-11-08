@@ -105,6 +105,7 @@ static userport_device_t userport_io_sim_device = {
     NULL,                                  /* NO read sp1 pin function */
     NULL,                                  /* NO store sp2 pin function */
     NULL,                                  /* NO read sp2 pin function */
+    NULL,                                  /* NO reset function */
     userport_io_sim_write_snapshot_module, /* snapshot write function */
     userport_io_sim_read_snapshot_module   /* snapshot read function */
 };
@@ -125,6 +126,7 @@ static userport_device_t userport_io_sim_pa2_device = {
     NULL,                                  /* NO read sp1 pin function */
     NULL,                                  /* NO store sp2 pin function */
     NULL,                                  /* NO read sp2 pin function */
+    NULL,                                  /* NO reset function */
     userport_io_sim_write_snapshot_module, /* snapshot write function */
     userport_io_sim_read_snapshot_module   /* snapshot read function */
 };
@@ -145,6 +147,7 @@ static userport_device_t userport_io_sim_pa23_device = {
     NULL,                                  /* NO read sp1 pin function */
     NULL,                                  /* NO store sp2 pin function */
     NULL,                                  /* NO read sp2 pin function */
+    NULL,                                  /* NO reset function */
     userport_io_sim_write_snapshot_module, /* snapshot write function */
     userport_io_sim_read_snapshot_module   /* snapshot read function */
 };
@@ -165,6 +168,7 @@ static userport_device_t userport_io_hw_device = {
     NULL,                               /* NO read sp1 pin function */
     NULL,                               /* NO store sp2 pin function */
     NULL,                               /* NO read sp2 pin function */
+    NULL,                               /* NO reset function */
     NULL,                               /* NO snapshot write function */
     NULL                                /* NO snapshot read function */
 };
@@ -185,6 +189,7 @@ static userport_device_t userport_io_hw_pa2_device = {
     NULL,                               /* NO read sp1 pin function */
     NULL,                               /* NO store sp2 pin function */
     NULL,                               /* NO read sp2 pin function */
+    NULL,                               /* NO reset function */
     NULL,                               /* NO snapshot write function */
     NULL                                /* NO snapshot read function */
 };
@@ -205,6 +210,7 @@ static userport_device_t userport_io_hw_pa23_device = {
     NULL,                               /* NO read sp1 pin function */
     NULL,                               /* NO store sp2 pin function */
     NULL,                               /* NO read sp2 pin function */
+    NULL,                               /* NO reset function */
     NULL,                               /* NO snapshot write function */
     NULL                                /* NO snapshot read function */
 };

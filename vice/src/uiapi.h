@@ -74,18 +74,22 @@ extern void ui_enable_drive_status(ui_drive_enable_t state,
                                    int *drive_led_color);
 extern void ui_display_drive_track(unsigned int drive_number,
                                    unsigned int drive_base,
-                                   unsigned int half_track_number);
+                                   unsigned int half_track_number,
+                                   unsigned int disk_side);
 /* The pwm value will vary between 0 and 1000.  */
 extern void ui_display_drive_led(unsigned int drive_number, unsigned int drive_base, unsigned int led_pwm1, unsigned int led_pwm2);
 extern void ui_display_drive_current_image(unsigned int unit_number, unsigned int drive_number, const char *image);
 extern int ui_extend_image_dialog(void);
 
-/* Tape related UI */
-extern void ui_set_tape_status(int tape_status);
-extern void ui_display_tape_motor_status(int motor);
-extern void ui_display_tape_control_status(int control);
-extern void ui_display_tape_counter(int counter);
-extern void ui_display_tape_current_image(const char *image);
+/* Tape related UI 
+ *
+ * The port argument is the index in the internal array of tape ports, so 0 or 1.
+ */
+extern void ui_set_tape_status(int port, int tape_status);
+extern void ui_display_tape_motor_status(int port, int motor);
+extern void ui_display_tape_control_status(int port, int control);
+extern void ui_display_tape_counter(int port, int counter);
+extern void ui_display_tape_current_image(int port, const char *image);
 
 /* Show a CPU JAM dialog.  */
 extern ui_jam_action_t ui_jam_dialog(const char *format, ...);
@@ -100,5 +104,9 @@ extern void ui_display_joyport(uint16_t *joyport);
 
 /* Volume UI */
 void ui_display_volume(int vol);
+
+/* Hotkeys */
+void ui_hotkeys_init(void);
+
 
 #endif
