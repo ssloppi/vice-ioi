@@ -18,8 +18,6 @@ noinst_LIBRARIES = libvideo.a
 
 libvideo_a_SOURCES = \
 	render-common.h \
-	ioi-video-output.c \
-	ioi-video-output.h \
 	render1x1.c \
 	render1x1.h \
 	render1x1rgbi.c \

@@ -65,14 +65,4 @@ const char *kbd_arch_keynum_to_keyname(signed long keynum);
  */
 const char *kbd_get_menu_keyname(void);
 
-typedef struct {
-    int keycode;
-    int press;
-    int release;
-} iq_key_t;
-
-iq_key_t ioi_input_queue_poll(void);
-void ioi_input_queue_init(void);
-void ioi_input_queue_shutdown(void);
-
 #endif
