@@ -395,7 +395,13 @@ static int get_joystick_autofire(int index)
 uint16_t get_joystick_value(int index)
 {
     uint16_t retval = joystick_value[index] & 0xffef;
-    int fire_button = JOYPORT_BIT_BOOL(joystick_value[index], JOYPORT_FIRE_BIT);
+
+    /* Quick fix to trigger fire from other joystick/gamepad buttons as well */
+    /* TODO make a better implementation */
+    int fire_button = JOYPORT_BIT_BOOL(joystick_value[index], JOYPORT_BUTTON_A_BIT);
+    fire_button = fire_button ? fire_button : JOYPORT_BIT_BOOL(joystick_value[index], JOYPORT_BUTTON_B_BIT);
+    fire_button = fire_button ? fire_button : JOYPORT_BIT_BOOL(joystick_value[index], JOYPORT_BUTTON_X_BIT);
+    fire_button = fire_button ? fire_button : JOYPORT_BIT_BOOL(joystick_value[index], JOYPORT_BUTTON_Y_BIT);
 
     /* check if autofire is enabled */
     if (joystick_autofire_enable[index]) {
