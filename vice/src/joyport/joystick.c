@@ -1702,6 +1702,10 @@ void register_joystick_driver(
         new_joystick_device->button_mapping[2].action = JOYSTICK;
         new_joystick_device->button_mapping[2].value.joy_pin = 64;
     }
+    if (num_buttons > 3) {
+        new_joystick_device->button_mapping[3].action = JOYSTICK;
+        new_joystick_device->button_mapping[3].value.joy_pin = 128;
+    }
     new_joystick_device->hat_mapping = (joystick_hat_mapping_t *)lib_calloc(num_hats, sizeof(joystick_hat_mapping_t));
     new_joystick_device->joyport = -1;
     new_joystick_device->priv = priv;
