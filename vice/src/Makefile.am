@@ -271,7 +271,7 @@ noinst_HEADERS = \
 	serial.h \
 	sidcart.h \
 	signals.h \
-	snespad.h
+	snespad.h \
 	sound.h \
 	ssi2001.h \
 	sysfile.h \
@@ -293,6 +293,7 @@ noinst_HEADERS = \
 	vic20ui.h \
 	vice.h \
 	vice_sdl.h \
+	vicedate.h \
 	vice-event.h \
 	vicemaxpath.h \
 	vicesocket.h \
@@ -518,7 +519,7 @@ infocontrib.h: $(srcdir)/buildtools/geninfocontrib_h.sh $(top_srcdir)/doc/vice.t
 		echo "ERROR: geninfocontrib_h.sh contains content that is not valid iso-8859-x" >&2; \
 		false; \
 	fi
-	@$(SHELL) $(srcdir)/buildtools/geninfocontrib_h.sh infocontrib.h <$(top_srcdir)/doc/vice.texi | LC_ALL=C sed -f $(srcdir)/buildtools/infocontrib.sed >infocontrib.h
+	@$(SHELL) $(srcdir)/buildtools/geninfocontrib_h.sh infocontrib.h <$(top_srcdir)/doc/vice.texi `grep "VICEDATE_YEAR " $(top_srcdir)/src/vicedate.h | cut -d " " -f 3` | LC_ALL=C sed -f $(srcdir)/buildtools/infocontrib.sed >infocontrib.h
 	@if [ "`file --mime-encoding infocontrib.h`" != "infocontrib.h: iso-8859-1" ]; then \
 		echo "ERROR: generated infocontrib.h contains content that is not valid iso-8859-x" >&2; \
 		false; \
@@ -526,11 +527,11 @@ infocontrib.h: $(srcdir)/buildtools/geninfocontrib_h.sh $(top_srcdir)/doc/vice.t
 
 # we need to replace \ and space by "regular" characters, else things break on some shells
 	@LC_ALL=C sed -e 's/\\/{/g' -e 's/ /}/g' <$(top_srcdir)/README >./README.tmp
-	@$(SHELL) $(srcdir)/buildtools/geninfocontrib_h.sh README <README.tmp >README2.tmp
+	@$(SHELL) $(srcdir)/buildtools/geninfocontrib_h.sh README `grep "VICEDATE_YEAR " $(top_srcdir)/src/vicedate.h | cut -d " " -f 3` <README.tmp >README2.tmp
 	@LC_ALL=C sed -e 's/{/\\/g' -e 's/}/ /g' <README2.tmp >../README
 	@rm -f README*.tmp
 	@cp $(top_srcdir)/doc/html/index.html ./index.tmp
-	@$(SHELL) $(srcdir)/buildtools/geninfocontrib_h.sh indexhtml <index.tmp >../doc/html/index.html
+	@$(SHELL) $(srcdir)/buildtools/geninfocontrib_h.sh indexhtml `grep "VICEDATE_YEAR " $(top_srcdir)/src/vicedate.h | cut -d " " -f 3` <index.tmp >../doc/html/index.html
 	@rm -f index.tmp
 	@rm -f team.tmp
 	@iconv -f ISO-8859-15 -t UTF-8 infocontrib.h > infocontrib.h.utf8 && mv infocontrib.h.utf8 infocontrib.h
@@ -621,7 +622,6 @@ xcbm5x0_lib = $(top_builddir)/src/cbm2/libcbm5x0.a
 common_libs = @ARCH_LIBS@ @LIBOBJS@ @READLINE@
 resid_libs = @RESID_LIBS@
 resid_dtv_libs = @RESID_DTV_LIBS@
-ffmpeg_libs = @FFMPEG_LIBS@
 
 # external libraries required for all emulators
 emu_extlibs = @UI_LIBS@ @SDL_EXTRA_LIBS@ @SOUND_LIBS@ @JOY_LIBS@ @GFXOUTPUT_LIBS@ @ZLIB_LIBS@ @DYNLIB_LIBS@ @ARCH_LIBS@ $(archdep_lib)
@@ -660,7 +660,6 @@ vsid_libs =  \
 	$(video_lib) \
 	$(common_libs) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(joyport_lib) \
 	$(joystickdrv_lib) \
 	$(hvsc_lib) \
@@ -680,7 +679,6 @@ vsid-all:
 vsid-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	vsid$(EXEEXT)
 
 # x64
@@ -688,7 +686,6 @@ x64_libs =  \
 	$(archdep_lib) \
 	$(tapeport_lib) \
 	$(c64_lib) \
-	$(tapeport_lib) \
 	$(c64cartsystem_lib) \
 	$(c64cart_lib) \
 	$(c64commoncart_lib) \
@@ -715,7 +712,6 @@ x64_libs =  \
 	$(common_libs) \
 	$(imagecontents_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 x64_SOURCES = $(base_sources) $(midi_sources)
@@ -731,7 +727,6 @@ x64-all:
 x64-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	x64$(EXEEXT)
 
 # x64sc
@@ -739,7 +734,6 @@ x64sc_libs =  \
 	$(archdep_lib) \
 	$(tapeport_lib) \
 	$(c64sc_lib) \
-	$(tapeport_lib) \
 	$(c64cartsystem_lib) \
 	$(c64cart_lib) \
 	$(c64commoncart_lib) \
@@ -766,7 +760,6 @@ x64sc_libs =  \
 	$(common_libs) \
 	$(imagecontents_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 x64sc_SOURCES = $(base_sources) $(midi_sources)
@@ -782,7 +775,6 @@ x64sc-all:
 x64sc-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	x64sc$(EXEEXT)
 
 # x64dtv
@@ -812,7 +804,6 @@ x64dtv_libs =  \
 	$(common_libs) \
 	$(imagecontents_lib) \
 	$(resid_dtv_libs) \
-	$(ffmpeg_libs) \
 	$(c64dtvstubs_lib) \
 	$(joyport_lib) \
 	$(joystickdrv_lib) \
@@ -832,7 +823,6 @@ x64dtv-all:
 x64dtv-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DTV_DEP@ \
-	@FFMPEG_DEP@ \
 	x64dtv$(EXEEXT)
 
 # xscpu64
@@ -866,7 +856,6 @@ xscpu64_libs =  \
 	$(common_libs) \
 	$(imagecontents_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 xscpu64_SOURCES = $(base_sources) $(midi_sources)
@@ -882,7 +871,6 @@ xscpu64-all:
 xscpu64-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	xscpu64$(EXEEXT)
 
 # x128
@@ -890,7 +878,6 @@ x128_libs =  \
 	$(archdep_lib) \
 	$(tapeport_lib) \
 	$(c128_lib) \
-	$(tapeport_lib) \
 	$(c64cartsystem_lib) \
 	$(c64cart_lib) \
 	$(c64commoncart_lib) \
@@ -920,7 +907,6 @@ x128_libs =  \
 	$(common_libs) \
 	$(imagecontents_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 x128_SOURCES = $(base_sources) $(midi_sources)
@@ -936,7 +922,6 @@ x128-all:
 x128-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	x128$(EXEEXT)
 
 # xvic
@@ -968,7 +953,6 @@ xvic_libs =  \
 	$(common_libs) \
 	$(imagecontents_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 xvic_SOURCES = $(base_sources) $(midi_sources)
@@ -984,7 +968,6 @@ xvic-all:
 xvic-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	xvic$(EXEEXT)
 
 # xpet
@@ -1014,7 +997,6 @@ xpet_libs =  \
 	$(joyport_lib) \
 	$(joystickdrv_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(rtc_lib) \
 	$(hvsc_lib)
 
@@ -1031,7 +1013,6 @@ xpet-all:
 xpet-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	xpet$(EXEEXT)
 
 # xplus4
@@ -1065,7 +1046,6 @@ xplus4_libs =  \
 	$(joyport_lib) \
 	$(joystickdrv_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 xplus4_SOURCES = $(base_sources)
@@ -1081,7 +1061,6 @@ xplus4-all:
 xplus4-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	xplus4$(EXEEXT)
 
 # xcbm2
@@ -1112,7 +1091,6 @@ xcbm2_libs = \
 	$(joyport_lib) \
 	$(joystickdrv_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(rtc_lib) \
 	$(hvsc_lib)
 
@@ -1129,7 +1107,6 @@ xcbm2-all:
 xcbm2-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	xcbm2$(EXEEXT)
 
 # xcbm5x0
@@ -1161,7 +1138,6 @@ xcbm5x0_libs = \
 	$(joyport_lib) \
 	$(joystickdrv_lib) \
 	$(resid_libs) \
-	$(ffmpeg_libs) \
 	$(hvsc_lib)
 
 xcbm5x0_SOURCES = $(base_sources)
@@ -1177,7 +1153,6 @@ xcbm5x0-all:
 xcbm5x0-program: \
 	$(BUILT_SOURCES) \
 	@RESID_DEP@ \
-	@FFMPEG_DEP@ \
 	xcbm5x0$(EXEEXT)
 
 # c1541
@@ -1238,8 +1213,6 @@ c1541-program: \
 DISTCLEANFILES = $(BUILT_SOURCES) $(GENFILES)
 
 # Special targets to build libraries in subdirectories.
-
-.PHONY: @RESID_DEP@ @RESID_DTV_DEP@ @FFMPEG_DEP@
 
 info.c: infocontrib.h
 
@@ -1352,21 +1325,6 @@ $(driveieee_lib):
 	@(cd drive/ieee && $(MAKE))
 $(drivetcbm_lib):
 	@(cd drive/tcbm && $(MAKE))
-$(top_builddir)/src/lib/libffmpeg/libavformat/libavformat.a:
-	@echo "making libavformat.a"
-	@(cd lib/libffmpeg && $(MAKE) prefix="$(top_builddir)/src/lib/libffmpeg/libavformat" VICEBUILD=1 install-libavformat-static)
-$(top_builddir)/src/lib/libffmpeg/libavcodec/libavcodec.a:
-	@echo "making libavcodec.a"
-	@(cd lib/libffmpeg && $(MAKE) prefix="$(top_builddir)/src/lib/libffmpeg/libavcodec" VICEBUILD=1 install-libavcodec-static)
-$(top_builddir)/src/lib/libffmpeg/libavutil/libavutil.a:
-	@echo "making libavutil.a"
-	@(cd lib/libffmpeg && $(MAKE) prefix="$(top_builddir)/src/lib/libffmpeg/libavutil" VICEBUILD=1 install-libavutil-static)
-$(top_builddir)/src/lib/libffmpeg/libswscale/libswscale.a:
-	@echo "making libswscale.a"
-	@(cd lib/libffmpeg && $(MAKE) prefix="$(top_builddir)/src/lib/libffmpeg/libswscale" VICEBUILD=1 install-libswscale-static)
-$(top_builddir)/src/lib/libffmpeg/libswresample/libswresample.a:
-	@echo "making libswresample.a"
-	@(cd lib/libffmpeg && $(MAKE) prefix="$(top_builddir)/src/lib/libffmpeg/libswresample" VICEBUILD=1 install-libswresample-static)
 $(fileio_lib):
 	@echo "making all in fileio"
 	@(cd fileio && $(MAKE))
@@ -1497,26 +1455,4 @@ $(vsid_lib):
 	@echo "making libvsid.a in c64"
 	@(cd c64 && $(MAKE) psiddrv.h libvsid.a)
 
-if HAVE_SHARED_FFMPEG
-$(top_builddir)/src/libffmpeg.a: libffmpeg
-	touch dummy.c
-	$(CC) -o dummy.o -c dummy.c
-	$(AR) cru $(top_builddir)/src/libffmpeg.a dummy.o
-	$(RANLIB) $(top_builddir)/src/libffmpeg.a
-	rm dummy.o dummy.c
-endif
-
-clean-ffmpeg:
-	rm -f $(top_builddir)/src/libffmpeg.a
-
-if HAVE_SHARED_FFMPEG
-EXTRA_CLEAN = clean-ffmpeg
-else
-if HAVE_STATIC_FFMPEG
-EXTRA_CLEAN = clean-ffmpeg
-else
-EXTRA_CLEAN =
-endif
-endif
-
-clean: clean-recursive $(EXTRA_CLEAN)
+clean: clean-recursive

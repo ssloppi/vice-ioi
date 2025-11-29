@@ -96,6 +96,11 @@ static void waasoft_dongle_store_dig(int port, uint8_t val)
     waasoft_reset_line[port] = reset;
 }
 
+static void waasoft_powerup(int port)
+{
+    counter[port] = 0;
+}
+
 /* ------------------------------------------------------------------------- */
 
 static int waasoft_write_snapshot(struct snapshot_s *s, int p);
@@ -114,6 +119,7 @@ static joyport_t joyport_waasoft_dongle_device = {
     waasoft_dongle_store_dig,      /* digital line store function */
     NULL,                          /* NO pot-x read function */
     waasoft_dongle_read_poty,      /* pot-y read function */
+    waasoft_powerup,               /* powerup function */
     waasoft_write_snapshot,        /* device write snapshot function */
     waasoft_read_snapshot,         /* device read snapshot function */
     NULL,                          /* NO device hook function */
@@ -138,7 +144,7 @@ int joyport_waasoft_dongle_resources_init(void)
    BYTE  | CLOCK   | clock line state
  */
 
-static char snap_module_name[] = "WAASOFT";
+static const char snap_module_name[] = "WAASOFT";
 #define SNAP_MAJOR   1
 #define SNAP_MINOR   0
 

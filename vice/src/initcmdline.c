@@ -152,6 +152,13 @@ static int cmdline_help(const char *param, void *extra_param)
      * --compyx
      */
 
+/* FIXME: a hack to prevent -help crashing on the SDL ui.
+          This needs to be fixed properly!! */
+#if defined(USE_SDLUI) || defined(USE_SDLUI2)
+    /* remove any trace of this variable once this is properly fixed! */
+    sdl_help_shutdown = 1;
+#endif
+
 #if 0
     file_system_detach_disk_shutdown();
 #endif
@@ -298,7 +305,7 @@ static int cmdline_autoload(const char *param, void *extra_param)
 static int cmdline_console(const char *param, void *extra_param)
 {
     console_mode = 1;
-    video_disabled_mode = 1;
+    /* video_disabled_mode = 1; Breaks exitscreenshot */
     return 0;
 }
 #endif
@@ -351,7 +358,7 @@ static const cmdline_option_t common_cmdline_options[] =
 {
     { "-help", CALL_FUNCTION, CMDLINE_ATTRIB_NONE,
       cmdline_help, NULL, NULL, NULL,
-      NULL, "Show a list of the available options an_vice_xit normally" },
+      NULL, "Show a list of the available options and exit normally" },
     { "-?", CALL_FUNCTION, CMDLINE_ATTRIB_NONE,
       cmdline_help, NULL, NULL, NULL,
       NULL, "Show a list of the available options and exit normally" },

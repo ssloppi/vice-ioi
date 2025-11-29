@@ -433,6 +433,8 @@ void raster_set_geometry(raster_t *raster,
 
     raster->canvas->draw_buffer->visible_width = canvas_width;
     raster->canvas->draw_buffer->visible_height = canvas_height;
+
+    raster_canvas_init_ioi_video_output(raster);
 }
 
 static int raster_realize_init_done = 0;

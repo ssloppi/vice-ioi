@@ -459,10 +459,16 @@ void uistatusbar_draw(void)
         }
     }
 
+    text = statusbar_text;
     if (machine_is_jammed()) {
         text = machine_jam_reason();
     } else {
-        text = statusbar_text;
+        for (i = 0; i < NUM_DISK_UNITS; i++) {
+            if (drive_is_jammed(i)) {
+                text = drive_jam_reason(i);
+                break;
+            }
+        }
     }
     text_len = strlen(text);
 
@@ -529,5 +535,14 @@ void loader_set_statusbar(int val)
 #endif
 
 
-
-
+/** \brief  Show reset on statusbar
+ *
+ * A device was reset, so we show it on the statusbar
+ *
+ * \param[in]   device  device number
+ * \param[in]   mode    reset mode (only for the machine itself)
+ */
+void ui_display_reset(int device, int mode)
+{
+    /* NOT IMPLEMENTED */
+}

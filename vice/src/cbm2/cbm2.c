@@ -876,6 +876,9 @@ void machine_specific_reset(void)
 
 void machine_specific_powerup(void)
 {
+    userport_powerup();
+    tapeport_powerup();
+    joyport_powerup();
 }
 
 void machine_specific_shutdown(void)

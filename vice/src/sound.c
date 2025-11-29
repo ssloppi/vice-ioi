@@ -41,6 +41,7 @@
 #endif
 
 #include "archdep.h"
+#include "archdep_exit.h"
 #include "cmdline.h"
 #include "debug.h"
 #include "fixpoint.h"
@@ -62,7 +63,7 @@
 
 static log_t sound_log = LOG_ERR;
 
-static void sounddev_close(sound_device_t **dev);
+static void sounddev_close(const sound_device_t **dev);
 
 /* ------------------------------------------------------------------------- */
 
@@ -77,13 +78,13 @@ static void sounddev_close(sound_device_t **dev);
 /* ------------------------------------------------------------------------- */
 
 typedef struct sound_register_devices_s {
-    char *name;
+    const char *name;
     int (*init)(void);
     int is_playback_device;
 } sound_register_devices_t;
 
 /* This table is used to specify the order of inits of the playback and recording devices */
-static sound_register_devices_t sound_register_devices[] = {
+static const sound_register_devices_t sound_register_devices[] = {
 
     /* the "native" platform specific drivers should come first, sorted by
        priority (most wanted first) */
@@ -494,7 +495,7 @@ static const resource_int_t resources_int[] = {
       (void *)&sample_rate, set_sample_rate, NULL },
     { "SoundBufferSize", SOUND_SAMPLE_BUFFER_SIZE, RES_EVENT_NO, NULL,
       (void *)&buffer_size, set_buffer_size, NULL },
-    { "SoundFragmentSize", SOUND_FRAGMENT_MEDIUM, RES_EVENT_NO, NULL,
+    { "SoundFragmentSize", SOUND_FRAGMENT_SIZE, RES_EVENT_NO, NULL,
       (void *)&fragment_size, set_fragment_size, NULL },
     { "SoundVolume", 100, RES_EVENT_NO, NULL,
       (void *)&volume, set_volume, NULL },
@@ -672,10 +673,10 @@ typedef struct {
     int bufptr;
 
     /* pointer to playback device structure in use */
-    sound_device_t *playdev;
+    const sound_device_t *playdev;
 
     /* pointer to playback device structure in use */
-    sound_device_t *recdev;
+    const sound_device_t *recdev;
 
     /* number of samples in a fragment */
     int fragsize;
@@ -696,11 +697,11 @@ static snddata_t snddata;
 /* device registration code */
 #define MAX_SOUND_DEVICES 24
 
-static sound_device_t *sound_devices[MAX_SOUND_DEVICES];
+static const sound_device_t *sound_devices[MAX_SOUND_DEVICES];
 
 static int sound_device_count = 0;
 
-int sound_register_device(sound_device_t *pdevice)
+int sound_register_device(const sound_device_t *pdevice)
 {
     if (sound_device_count < MAX_SOUND_DEVICES) {
         sound_devices[sound_device_count] = pdevice;
@@ -739,6 +740,18 @@ static int sound_error(const char *msg)
 
     return 1;
 }
+
+#if 0
+/* close sid device and show error dialog */
+static int sound_error_log_only(const char *msg)
+{
+    sound_close();
+    log_message(sound_log, "%s", msg);
+    playback_enabled = 0;
+
+    return 1;
+}
+#endif
 
 static int16_t *temp_buffer = NULL;
 static int temp_buffer_size = 0;
@@ -871,7 +884,7 @@ int sound_open(void)
     int c, i, j;
     int channels_cap;
     int channels;
-    sound_device_t *pdev, *rdev;
+    const sound_device_t *pdev, *rdev;
     char *playname, *recname;
     char *playparam, *recparam;
     char *err;
@@ -1079,7 +1092,7 @@ int sound_open(void)
     return 0;
 }
 
-static void sounddev_close(sound_device_t **dev)
+static void sounddev_close(const sound_device_t **dev)
 {
     if (*dev) {
         log_message(sound_log, "Closing device `%s'", (*dev)->name);
@@ -1120,7 +1133,7 @@ void sound_close(void)
 /* run sid */
 static int sound_run_sound(void)
 {
-#if 0
+#if 1
     static int overflow_warning_count = 0;
 #endif
 
@@ -1150,10 +1163,11 @@ static int sound_run_sound(void)
                                              snddata.sound_output_channels,
                                              snddata.sound_chip_channels,
                                              &delta_t);
-        if (delta_t) {
-            sound_error("Sound buffer overflow (cycle based)");
-            return -1;
+        if (delta_t && !archdep_is_exiting()) {
 #if 0
+            sound_error_log_only("Sound buffer overflow (cycle based)");
+            return -1;
+#else
             if (overflow_warning_count < 25) {
                 log_warning(sound_log, "%s", "Sound buffer overflow (cycle based)");
                 overflow_warning_count++;
@@ -1222,7 +1236,6 @@ bool sound_flush()
 {
     int c, i, nr, space;
     char *state;
-    bool slept = false;
     
     if (!playback_enabled) {
         if (sdev_open) {
@@ -1300,27 +1313,33 @@ bool sound_flush()
                 /* Write as much as we can */
                 nr = space;
             }
+
+            mainlock_yield_begin();
             
             /* Flush buffer, all channels are already mixed into it. */
             if (snddata.playdev->write(snddata.buffer, nr * snddata.sound_output_channels)) {
                 sound_error("write to sound device failed.");
+
+                mainlock_yield_end();
                 goto done;
             }
 
             if (snddata.recdev) {
                 if (snddata.recdev->write(snddata.buffer, nr * snddata.sound_output_channels)) {
                     sound_error("write to sound device failed.");
+
+                    mainlock_yield_end();
                     goto done;
                 }
             }
             
             /* Successful write to audio device, exit loop. */
+            mainlock_yield_end();
             break;
         }
         
         /* We can't write yet, try again after a minimal sleep. */
         tick_sleep(tick_per_second() / 1000);
-        slept = true;
     }
 
     snddata.bufptr -= nr;
@@ -1339,15 +1358,11 @@ bool sound_flush()
     
 done:
 
-    if (!slept) {
-        mainlock_yield_once();
-    }
-
     /*
      * If the sound device is not a timing source, then we need
      * the host to sleep to sync time with the emulator.
      */
-    
+
     return !sound_is_timing_source;
 }
 

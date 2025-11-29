@@ -140,6 +140,7 @@ static joyport_t joyport_bbrtc_device = {
     bbrtc_store,              /* digital line store function */
     NULL,                     /* NO pot-x read function */
     NULL,                     /* NO pot-y read function */
+    NULL,                     /* NO powerup function */
     bbrtc_write_snapshot,     /* device snapshot write function */
     bbrtc_read_snapshot,      /* device snapshot read function */
     NULL,                     /* NO device hook function */
@@ -213,7 +214,7 @@ int joyport_bbrtc_cmdline_options_init(void)
    BYTE  | DATA | data line state
  */
 
-static char snap_module_name[] = "BBRTC";
+static const char snap_module_name[] = "BBRTC";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 

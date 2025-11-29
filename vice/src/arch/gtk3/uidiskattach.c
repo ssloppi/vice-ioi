@@ -51,6 +51,7 @@
 #include "mainlock.h"
 #include "resources.h"
 #include "ui.h"
+#include "uiapi.h"
 #include "uistatusbar.h"
 #include "uimachinewindow.h"
 #include "lastdir.h"
@@ -201,8 +202,6 @@ static void do_autostart(GtkWidget *widget, int index, int autostart)
     gchar *filename;
     gchar *filename_locale;
 
-    mainlock_assert_lock_obtained();
-
     lastdir_update(widget, &last_dir, &last_file);
     filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(widget));
     /* convert filename to current locale */
@@ -221,6 +220,7 @@ static void do_autostart(GtkWidget *widget, int index, int autostart)
                 autostart ? AUTOSTART_MODE_RUN : AUTOSTART_MODE_LOAD) < 0) {
         /* oeps */
         log_error(LOG_ERR, "autostart disk attach failed.");
+        ui_error("Autostart disk attach failed.");
     }
     g_free(filename);
     g_free(filename_locale);
@@ -289,10 +289,6 @@ static void on_selection_changed(GtkFileChooser *chooser, gpointer data)
  * \param[in]   widget      the dialog
  * \param[in]   response_id response ID
  * \param[in]   user_data   unit number
- *
- * TODO:    proper (error) messages, which requires implementing ui_error() and
- *          ui_message() and moving them into gtk3/widgets to avoid circular
- *          references
  */
 static void on_response(GtkWidget *widget, gint response_id, gpointer user_data)
 {
@@ -303,7 +299,7 @@ static void on_response(GtkWidget *widget, gint response_id, gpointer user_data)
     resources_get_int("AutostartOnDoubleclick", &autostart);
 
     /* first, to make the following logic less funky, map some events to others,
-       depending on whether autostart-on-doubleclick is enabled or not, and 
+       depending on whether autostart-on-doubleclick is enabled or not, and
        depending on the event coming from the preview window or not. */
     switch (response_id) {
         /* double-click on file in the preview widget when autostart-on-doubleclick is NOT enabled */

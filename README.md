@@ -1,27 +1,29 @@
 # VICE IOI
-The Versatile Commodore Emulator with additional I/O Interfaces for external application communication.
+The Versatile Commodore Emulator with additional I/O interfaces for external application communication.
 
-VICE IOI is a port of VICE, the Versatile Commodore Emulator 3.5.
+VICE IOI is a port of VICE (Versatile Commodore Emulator) version 3.6.1.
 
-# Intended use
+# Intended Use
 This port provides additional interfaces for communicating with third-party applications.
 
-Supported OS: Windows 10
+**Supported OS:** Windows 11
 
-In case your usage doesn't require these additional interfaces, you should use the original VICE or some other relevant port/emulator.
+If your use case does not require these additional interfaces, you should use the original VICE or another relevant port/emulator.
 
-Original VICE exists here -> https://vice-emu.sourceforge.io/
+Original VICE is available at: https://vice-emu.sourceforge.io/
 
-# About bugs and feature requests
-This software is provided as is, it is still work in progress. It comes without guarantee of work, without warranty.
+# Bugs and Feature Requests
+This software is provided *as is* and is still a work in progress. It comes with no guarantees or warranties.
 
-There is no active channel currently that receives problem reports related to this software.
+There is currently no active channel for reporting issues related to this software.
 
-In case you do find issues, please do not contact VICE-team on issues related to VICE IOI. Verify first that the issue is VICE related by using original VICE, before reporting it.
+If you encounter problems, **please do not contact the VICE team** regarding VICE IOI. First, verify that the issue also occurs in the original VICE before reporting it.
 
-# Original VICE 3.5 readme
 
-  VICE  3.5                                                        Dec 2020
+# Original VICE 3.6.1 readme
+
+
+  VICE  3.6.1                                                        Jan 2022
 
 
                  _______________
@@ -46,7 +48,7 @@ In case you do find issues, please do not contact VICE-team on issues related to
 
  ----------------------------------------------------------------------------
 
- This is version 3.5 of VICE, the multi-platform C64, C128, VIC20,
+ This is version 3.6.1 of VICE, the multi-platform C64, C128, VIC20,
  PET, PLUS4 and CBM-II emulator.  This version can be compiled for
  Win32, macOS, Haiku and for most Unix systems provided with the X Window
  System version 11, R5 or later.
@@ -213,23 +215,24 @@ In case you do find issues, please do not contact VICE-team on issues related to
  VICE, the Versatile Commodore Emulator
 
     Core Team Members:
-    1999-2021 Martin Pottendorfer
-    2005-2021 Marco van den Heuvel
-    2007-2021 Fabrizio Gennari
-    2009-2021 Groepaz
-    2009-2021 Errol Smith
-    2009-2021 Ingo Korb
-    2010-2021 Olaf Seibert
-    2011-2021 Marcus Sutton
-    2011-2021 Kajtar Zsolt
-    2016-2021 AreaScout
-    2016-2021 Bas Wassink
-    2017-2021 Michael C. Martin
-    2018-2021 Christopher Phillips
-    2019-2021 David Hogan
-    2020-2021 Empathic Qubit
-    2020-2021 Roberto Muscedere
-    2021      June Tate-Gans
+    1999-2022 Martin Pottendorfer
+    2005-2022 Marco van den Heuvel
+    2007-2022 Fabrizio Gennari
+    2009-2022 Groepaz
+    2009-2022 Errol Smith
+    2009-2022 Ingo Korb
+    2010-2022 Olaf Seibert
+    2011-2022 Marcus Sutton
+    2011-2022 Kajtar Zsolt
+    2016-2022 AreaScout
+    2016-2022 Bas Wassink
+    2017-2022 Michael C. Martin
+    2018-2022 Christopher Phillips
+    2019-2022 David Hogan
+    2020-2022 Empathic Qubit
+    2020-2022 Roberto Muscedere
+    2021-2022 June Tate-Gans
+    2021-2022 Pablo Roldan
 
     Inactive/Ex Team Members:
     2011-2016 Stefan Haubenthal
@@ -252,7 +255,7 @@ In case you do find issues, please do not contact VICE-team on issues related to
     2000-2004 Markus Brenner
     1999-2004 Thomas Bretz
     1997-2001 Daniel Sladic
-    1996-2001 Andr� Fachat
+    1996-2001 André Fachat
     1996-1999 Ettore Perazzoli
     1993-1994, 1997-1999 Teemu Rantanen
     1993-1996 Jouko Valta
@@ -262,7 +265,7 @@ In case you do find issues, please do not contact VICE-team on issues related to
     2009-2017 Mikkel Holm Olsen
     2000-2017 Martin Pottendorfer
     2011-2017 Manuel Antonio Rodriguez Bas
-    2004-2017 Paul Dub�
+    2004-2017 Paul Dubé
     2006-2017 Czirkos Zoltan
     2006-2017 Karai Csaba
     2001-2017 Andrea Musuruane

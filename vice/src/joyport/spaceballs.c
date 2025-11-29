@@ -132,6 +132,7 @@ static joyport_t joyport_spaceballs_device = {
     NULL,                             /* NO digital line store function */
     NULL,                             /* NO pot-x read function */
     NULL,                             /* NO pot-y read function */
+    NULL,                             /* NO powerup function */
     spaceballs_write_snapshot,        /* device write snapshot function */
     spaceballs_read_snapshot,         /* device read snapshot function */
     NULL,                             /* NO device hook function */
@@ -173,6 +174,7 @@ static userport_device_t userport_spaceballs_device = {
     NULL,                                  /* NO read sp1 pin function */
     NULL,                                  /* NO store sp2 pin function */
     NULL,                                  /* NO read sp2 pin function */
+    NULL,                                  /* NO powerup function */
     NULL,                                  /* NO snapshot write function */
     NULL                                   /* NO snapshot read function */
 };
@@ -186,7 +188,7 @@ static userport_device_t userport_spaceballs_device = {
    BYTE  | GROUNDS | userport PBx state
  */
 
-static char snap_module_name[] = "SPACEBALLS";
+static const char snap_module_name[] = "SPACEBALLS";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   0
 

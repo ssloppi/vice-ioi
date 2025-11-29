@@ -256,6 +256,7 @@ static joyport_t joyport_cx21_device = {
     cx21_store_dig,           /* digital line store function */
     cx21_read_potx,           /* pot-x read function */
     cx21_read_poty,           /* pot-y read function */
+    NULL,                     /* NO powerup function */
     cx21_write_snapshot,      /* device write snapshot function */
     cx21_read_snapshot,       /* device read snapshot function */
     NULL,                     /* NO device hook function */
@@ -278,7 +279,7 @@ int joyport_cx21_resources_init(void)
    BYTE  | PORT | PORT register state
  */
 
-static char snap_module_name[] = "CX21";
+static const char snap_module_name[] = "CX21";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   0
 

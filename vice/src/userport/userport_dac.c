@@ -124,6 +124,7 @@ static userport_device_t dac_device = {
     NULL,                               /* NO store sp2 pin function */
     NULL,                               /* NO read sp2 pin function */
     NULL,                               /* NO reset function */
+    NULL,                               /* NO powerup function */
     userport_dac_write_snapshot_module, /* snapshot write function */
     userport_dac_read_snapshot_module   /* snapshot read function */
 };
@@ -199,7 +200,7 @@ static void userport_dac_sound_reset(sound_t *psid, CLOCK cpu_clk)
    BYTE  | voice      | voice
  */
 
-static char snap_module_name[] = "UPDAC";
+static const char snap_module_name[] = "UPDAC";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 

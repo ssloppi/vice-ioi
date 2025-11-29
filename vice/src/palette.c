@@ -180,10 +180,9 @@ static int palette_load_core(FILE *f, const char *file_name,
 
         p1 = next_nonspace(p1);
         if (*p1 != '\0') {
-            log_error(palette_log,
+            log_warning(palette_log,
                       "%s, %u: garbage at end of line.",
                       file_name, line_num);
-            return -1;
         }
         if (entry_num >= palette_return->num_entries) {
             log_error(palette_log,
@@ -319,6 +318,7 @@ static const palette_info_t palettelist[] = {
     { "VIC",   "Mike (PAL)",         "mike-pal"}, /* default */
     { "VIC",   "Mike (NTSC)",        "mike-ntsc"},
     { "VIC",   "Colodore (PAL)",     "colodore_vic"},
+    { "VIC",   "PALette 6561",       "PALette"},
     { "VIC",   "VICE",               "vice"},
     /* data/CBM-II/ */
     /* data/PET/ */

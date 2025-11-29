@@ -976,6 +976,7 @@ static joyport_t paddles_joyport_device = {
     NULL,                     /* NO digital line store function */
     mouse_get_paddle_x,       /* pot-x read function */
     mouse_get_paddle_y,       /* pot-y read function */
+    NULL,                     /* NO powerup function */
     paddles_write_snapshot,   /* device write snapshot function */
     paddles_read_snapshot,    /* device read snapshot function */
     NULL,                     /* NO device hook function */
@@ -997,6 +998,7 @@ static joyport_t mf_joystick_joyport_device = {
     NULL,                      /* NO digital line store function */
     mouse_get_paddle_x,        /* pot-x read function */
     mouse_get_paddle_y,        /* pot-y read function */
+    NULL,                      /* NO powerup function */
     paddles_write_snapshot,    /* device write snapshot function */
     paddles_read_snapshot,     /* device read snapshot function */
     NULL,                      /* NO device hook function */
@@ -1020,6 +1022,7 @@ static joyport_t mouse_1351_joyport_device = {
     NULL,                      /* NO digital line store function */
     mouse_get_1351_x,          /* pot-x read function */
     mouse_get_1351_y,          /* pot-y read function */
+    NULL,                      /* NO powerup function */
     mouse_1351_write_snapshot, /* device write snapshot function */
     mouse_1351_read_snapshot,  /* device read snapshot function */
     NULL,                      /* NO device hook function */
@@ -1068,6 +1071,7 @@ static joyport_t mouse_neos_joyport_device = {
     neos_mouse_store,                      /* digital line store function */
     joyport_mouse_neos_amiga_st_read_potx, /* pot-x read function */
     NULL,                                  /* NO pot-y read function */
+    NULL,                                  /* NO powerup function */
     mouse_neos_write_snapshot,             /* device write snapshot function */
     mouse_neos_read_snapshot,              /* device read snapshot function */
     NULL,                                  /* NO device hook function */
@@ -1109,6 +1113,7 @@ static joyport_t mouse_amiga_joyport_device = {
     NULL,                                  /* NO digital line store function */
     joyport_mouse_neos_amiga_st_read_potx, /* pot-x read function */
     joyport_mouse_amiga_st_read_poty,      /* pot-y read function */
+    NULL,                                  /* NO powerup function */
     mouse_amiga_write_snapshot,            /* device write snapshot function */
     mouse_amiga_read_snapshot,             /* device read snapshot function */
     NULL,                                  /* NO device hook function */
@@ -1132,6 +1137,7 @@ static joyport_t mouse_cx22_joyport_device = {
     NULL,                      /* NO digital line store function */
     NULL,                      /* NO pot-x read function */
     NULL,                      /* NO pot-y read function */
+    NULL,                      /* NO powerup function */
     mouse_cx22_write_snapshot, /* device write snapshot function */
     mouse_cx22_read_snapshot,  /* device read snapshot function */
     NULL,                      /* NO device hook function */
@@ -1156,6 +1162,7 @@ static joyport_t mouse_st_joyport_device = {
     NULL,                                  /* NO digital line store function */
     joyport_mouse_neos_amiga_st_read_potx, /* pot-x read function */
     joyport_mouse_amiga_st_read_poty,      /* pot-y read function */
+    NULL,                                  /* NO powerup function */
     mouse_st_write_snapshot,               /* device write snapshot function */
     mouse_st_read_snapshot,                /* device read snapshot function */
     NULL,                                  /* NO device hook function */
@@ -1192,6 +1199,7 @@ static joyport_t mouse_smart_joyport_device = {
     smart_mouse_store,          /* digital line store function */
     mouse_get_1351_x,           /* pot-x read function */
     mouse_get_1351_y,           /* pot-y read function */
+    NULL,                       /* NO powerup function */
     mouse_smart_write_snapshot, /* device write snapshot function */
     mouse_smart_read_snapshot,  /* device read snapshot function */
     NULL,                       /* NO device hook function */
@@ -1226,6 +1234,7 @@ static joyport_t mouse_micromys_joyport_device = {
     NULL,                          /* NO digital line store function */
     mouse_get_1351_x,              /* pot-x read function */
     mouse_get_1351_y,              /* pot-y read function */
+    NULL,                          /* NO powerup function */
     mouse_micromys_write_snapshot, /* device write snapshot function */
     mouse_micromys_read_snapshot,  /* device read snapshot function */
     NULL,                          /* NO device hook function */
@@ -1254,6 +1263,7 @@ static joyport_t koalapad_joyport_device = {
     NULL,                       /* NO digital line store function */
     joyport_koalapad_pot_x,     /* pot-x read function */
     mouse_get_paddle_y,         /* pot-y read function */
+    NULL,                       /* NO powerup function */
     koalapad_write_snapshot,    /* device write snapshot function */
     koalapad_read_snapshot,     /* device read snapshot function */
     NULL,                       /* NO device hook function */
@@ -1361,7 +1371,7 @@ static const resource_int_t resources_extra_int[] = {
     RESOURCE_INT_LIST_END
 };
 
-static mouse_func_t mouse_funcs =
+static const mouse_func_t mouse_funcs =
 {
     mouse_button_left,
     mouse_button_right,
@@ -1722,7 +1732,7 @@ static int read_neos_and_amiga_val_snapshot(snapshot_module_t *m)
    BYTE  | old paddle value 3 | old paddle value 3
  */
 
-static char paddles_snap_module_name[] = "PADDLES";
+static const char paddles_snap_module_name[] = "PADDLES";
 #define PADDLES_VER_MAJOR   0
 #define PADDLES_VER_MINOR   0
 
@@ -1808,7 +1818,7 @@ fail:
    DWORD  | update y emu iv        | update Y emu IV
  */
 
-static char mouse_1351_snap_module_name[] = "MOUSE_1351";
+static const char mouse_1351_snap_module_name[] = "MOUSE_1351";
 #define MOUSE_1351_VER_MAJOR   0
 #define MOUSE_1351_VER_MINOR   0
 
@@ -1887,7 +1897,7 @@ fail:
    DWORD | neos time out cycles | time out cycles
  */
 
-static char mouse_neos_snap_module_name[] = "MOUSE_NEOS";
+static const char mouse_neos_snap_module_name[] = "MOUSE_NEOS";
 #define MOUSE_NEOS_VER_MAJOR   0
 #define MOUSE_NEOS_VER_MINOR   0
 
@@ -2005,7 +2015,7 @@ fail:
    DWORD  | buttons                | buttons state
  */
 
-static char mouse_amiga_snap_module_name[] = "MOUSE_AMIGA";
+static const char mouse_amiga_snap_module_name[] = "MOUSE_AMIGA";
 #define MOUSE_AMIGA_VER_MAJOR   0
 #define MOUSE_AMIGA_VER_MINOR   0
 
@@ -2097,7 +2107,7 @@ fail:
    DWORD  | update y emu iv        | update Y emu IV
  */
 
-static char mouse_cx22_snap_module_name[] = "MOUSE_CX22";
+static const char mouse_cx22_snap_module_name[] = "MOUSE_CX22";
 #define MOUSE_CX22_VER_MAJOR   0
 #define MOUSE_CX22_VER_MINOR   0
 
@@ -2184,7 +2194,7 @@ fail:
    DWORD  | buttons                | buttons state
  */
 
-static char mouse_st_snap_module_name[] = "MOUSE_ST";
+static const char mouse_st_snap_module_name[] = "MOUSE_ST";
 #define MOUSE_ST_VER_MAJOR   0
 #define MOUSE_ST_VER_MINOR   0
 
@@ -2276,7 +2286,7 @@ fail:
    DWORD  | update y emu iv        | update Y emu IV
  */
 
-static char mouse_smart_snap_module_name[] = "MOUSE_SMART";
+static const char mouse_smart_snap_module_name[] = "MOUSE_SMART";
 #define MOUSE_SMART_VER_MAJOR   0
 #define MOUSE_SMART_VER_MINOR   0
 
@@ -2367,7 +2377,7 @@ fail:
    DWORD  | up down pulse end      | up down pulse end
  */
 
-static char mouse_micromys_snap_module_name[] = "MOUSE_MICROMYS";
+static const char mouse_micromys_snap_module_name[] = "MOUSE_MICROMYS";
 #define MOUSE_MICROMYS_VER_MAJOR   0
 #define MOUSE_MICROMYS_VER_MINOR   0
 
@@ -2456,7 +2466,7 @@ fail:
    WORD   | old paddle value 3 | old paddle value 3
  */
 
-static char koalapad_snap_module_name[] = "KOALAPAD";
+static const char koalapad_snap_module_name[] = "KOALAPAD";
 #define KOALAPAD_VER_MAJOR   0
 #define KOALAPAD_VER_MINOR   0
 

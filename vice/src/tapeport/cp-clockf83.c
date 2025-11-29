@@ -71,7 +71,7 @@ static tapeport_device_t tapertc_device = {
     VICE_MACHINE_ALL,           /* device works on all machines */
     TAPEPORT_PORT_ALL_MASK,     /* device works on all ports */
     tapertc_enable,             /* device enable function */
-    NULL,                       /* NO device specific reset function */
+    NULL,                       /* NO device specific hard reset function */
     tapertc_resources_shutdown, /* device shutdown function */
     tapertc_store_sda,          /* set motor line function */
     tapertc_store_scl,          /* NO set write line function */
@@ -200,7 +200,7 @@ static void tapertc_store_scl(int port, int write_bit)
    BYTE  | motor | motor state
  */
 
-static char snap_module_name[] = "TP_CP_CLOCK_F83";
+static const char snap_module_name[] = "TP_CP_CLOCK_F83";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 

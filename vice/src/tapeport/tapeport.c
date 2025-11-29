@@ -99,7 +99,7 @@ int tapeport_device_register(int id, tapeport_device_t *device)
     tapeport_device[id].machine_mask = device->machine_mask;
     tapeport_device[id].port_mask = device->port_mask;
     tapeport_device[id].enable = device->enable;
-    tapeport_device[id].reset = device->reset;
+    tapeport_device[id].powerup = device->powerup;
     tapeport_device[id].shutdown = device->shutdown;
     tapeport_device[id].set_motor = device->set_motor;
     tapeport_device[id].toggle_write_bit = device->toggle_write_bit;
@@ -187,6 +187,14 @@ static int tapeport_valid_devices_compare_names(const void* a, const void* b)
     return strcmp(arg1->name, arg2->name);
 }
 
+int tapeport_valid_port(int port)
+{
+    if (port < 0 || port >= tapeport_ports) {
+        return 0;
+    }
+    return 1;
+}
+
 tapeport_desc_t *tapeport_get_valid_devices(int port, int sort)
 {
     tapeport_desc_t *retval = NULL;
@@ -266,7 +274,7 @@ void tapeport_set_sense_out(int port, int sense)
     }
 }
 
-void tapeport_reset(void)
+void tapeport_powerup(void)
 {
     int i;
 
@@ -275,8 +283,8 @@ void tapeport_reset(void)
             /* use new tapeport system if the device has been registered */
             if (tapeport_current_device[i] != TAPEPORT_DEVICE_NONE) {
                 if (tapeport_device[tapeport_current_device[i]].name) {
-                    if (tapeport_device[tapeport_current_device[i]].reset) {
-                        tapeport_device[tapeport_current_device[i]].reset(i);
+                    if (tapeport_device[tapeport_current_device[i]].powerup) {
+                        tapeport_device[tapeport_current_device[i]].powerup(i);
                     }
                 }
             }
@@ -559,7 +567,7 @@ void tapeport_enable(int val)
 
 #define DUMP_VER_MAJOR   1
 #define DUMP_VER_MINOR   0
-static char snap_module_name[] = "TAPEPORT";
+static const char snap_module_name[] = "TAPEPORT";
 
 int tapeport_snapshot_write_module(snapshot_t *s, int write_image)
 {

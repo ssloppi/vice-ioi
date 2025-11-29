@@ -32,18 +32,15 @@
 
 /* #define TAPEPORT_EXPERIMENTAL_DEVICES */
 
-enum {
-    TAPEPORT_DEVICE_NONE = 0,
-    TAPEPORT_DEVICE_DATASETTE,
-    TAPEPORT_DEVICE_CP_CLOCK_F83,
-    TAPEPORT_DEVICE_DTL_BASIC_DONGLE,
-    TAPEPORT_DEVICE_SENSE_DONGLE,
-#ifdef TAPEPORT_EXPERIMENTAL_DEVICES
-    TAPEPORT_DEVICE_TAPE_DIAG_586220_HARNESS,
-#endif
-    TAPEPORT_DEVICE_TAPECART,
-    TAPEPORT_MAX_DEVICES
-};
+#define TAPEPORT_DEVICE_NONE                      0
+#define TAPEPORT_DEVICE_DATASETTE                 1
+#define TAPEPORT_DEVICE_CP_CLOCK_F83              2
+#define TAPEPORT_DEVICE_DTL_BASIC_DONGLE          3
+#define TAPEPORT_DEVICE_SENSE_DONGLE              4
+#define TAPEPORT_DEVICE_TAPE_DIAG_586220_HARNESS  5
+#define TAPEPORT_DEVICE_TAPECART                  6
+
+#define TAPEPORT_MAX_DEVICES                      7
 
 enum {
     TAPEPORT_DEVICE_TYPE_NONE = 0,
@@ -88,8 +85,8 @@ typedef struct tapeport_device_s {
     /* enable device function */
     int (*enable)(int port, int val);
 
-    /* reset device */
-    void (*reset)(int port);
+    /* hard reset the device / powerup */
+    void (*powerup)(int port);
 
     /* shutdown device */
     void (*shutdown)(void);
@@ -119,7 +116,9 @@ extern void tapeport_set_motor(int port, int flag);
 extern void tapeport_toggle_write_bit(int port, int write_bit);
 extern void tapeport_set_sense_out(int port, int sense);
 
-extern void tapeport_reset(void);
+extern void tapeport_powerup(void);
+
+extern int tapeport_valid_port(int port);
 
 extern void tapeport_trigger_flux_change(unsigned int on, int port);
 extern void tapeport_set_tape_sense(int sense, int port);

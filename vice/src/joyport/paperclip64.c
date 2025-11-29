@@ -160,6 +160,11 @@ static void paperclip64_store(int port, uint8_t val)
    command[port] = new_command;
 }
 
+static void paperclip64_powerup(int port)
+{
+    counter[port] = 0;
+}
+
 /* ------------------------------------------------------------------------- */
 
 /* Some prototypes are needed */
@@ -179,6 +184,7 @@ static joyport_t joyport_paperclip64_device = {
     paperclip64_store,          /* digital line store function */
     NULL,                       /* NO pot-x read function */
     NULL,                       /* NO pot-y read function */
+    paperclip64_powerup,        /* powerup function */
     paperclip64_write_snapshot, /* device write snapshot function */
     paperclip64_read_snapshot,  /* device read snapshot function */
     NULL,                       /* NO device hook function */
@@ -203,7 +209,7 @@ int joyport_paperclip64_resources_init(void)
    BYTE  | state   | state
  */
 
-static char snap_module_name[] = "PAPERCLIP64";
+static const char snap_module_name[] = "PAPERCLIP64";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 

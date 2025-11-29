@@ -38,6 +38,7 @@
 #include "cmdline.h"
 #include "datasette.h"
 #include "datasette-sound.h"
+#include "ioi-video-output.h"
 #include "lib.h"
 #include "log.h"
 #include "machine.h"
@@ -360,6 +361,7 @@ static void datasette_update_ui_counter(int port)
         /* FIXME: this is not quite correct, on a real datasette the counter
                   would also count when no tape is inserted */
         ui_display_tape_counter(port, 1000 - datasette_counter_offset[port]);
+        ioi_update_tape_counter(port, 1000 - datasette_counter_offset[port]);
     } else {
         current_image[port]->counter = (1000 - datasette_counter_offset[port] +
                                 (int) (DS_G *
@@ -367,6 +369,7 @@ static void datasette_update_ui_counter(int port)
                                                 / (datasette_cycles_per_second / 8.0)
                                                 * ds_c1) + ds_c2) - ds_c3))) % 1000;
         ui_display_tape_counter(port, current_image[port]->counter);
+        ioi_update_tape_counter(port, current_image[port]->counter);
     }
 }
 
@@ -704,6 +707,7 @@ static void datasette_read_bit(CLOCK offset, void *data)
     if (motor_stop_clk[port] > 0 && maincpu_clk >= motor_stop_clk[port]) {
         motor_stop_clk[port] = 0;
         ui_display_tape_motor_status(port, 0);
+        ioi_update_tape_motor_status(port, 0);
         datasette_motor[port] = 0;
     }
     DBG(("datasette_read_bit(motor:%d)", datasette_motor[port]));
@@ -907,6 +911,10 @@ static void datasette_internal_reset(int port)
 {
     int mode = current_image[port] ? current_image[port]->mode : notape_mode[port];
 
+    if (!tapeport_valid_port(port)) {
+        return;
+    }
+
     DBG(("datasette_internal_reset (mode:%d)", mode));
 
     if (mode == DATASETTE_CONTROL_START ||
@@ -929,6 +937,8 @@ static void datasette_internal_reset(int port)
     motor_stop_clk[port] = 0;
     datasette_update_ui_counter(port);
     ui_display_tape_motor_status(port, 0);
+    ioi_update_tape_motor_status(port, 0);
+    ui_display_reset(port + 1, 0);
     fullwave[port] = 0;
 }
 
@@ -1031,6 +1041,7 @@ static void datasette_control_internal(int port, int command)
                 break;
         }
         ui_display_tape_control_status(port, current_image[port]->mode);
+        ioi_update_tape_control_status(port, current_image[port]->mode);
     } else {
        switch (command) {
             case DATASETTE_CONTROL_RESET_COUNTER:
@@ -1083,6 +1094,7 @@ static void datasette_control_internal(int port, int command)
                 break;
         }
         ui_display_tape_control_status(port, notape_mode[port]);
+        ioi_update_tape_control_status(port, notape_mode[port]);
     }
     /* clear the tap-buffer */
     last_tap[port] = next_tap[port] = 0;
@@ -1118,6 +1130,7 @@ static void datasette_set_motor(int port, int flag)
             last_write_clk[port] = (CLOCK)0;
             datasette_start_motor(port);
             ui_display_tape_motor_status(port, 1);
+            ioi_update_tape_motor_status(port, 1);
             datasette_motor[port] = 1;
         } else {
             DBG(("datasette_set_motor() not starting motor"));
@@ -1345,8 +1358,10 @@ static int datasette_read_snapshot(int port, snapshot_t *s)
     ui_set_tape_status(port, current_image[port] ? 1 : 0);
     datasette_update_ui_counter(port);
     ui_display_tape_motor_status(port, datasette_motor[port]);
+    ioi_update_tape_motor_status(port, datasette_motor[port]);
     if (current_image[port]) {
         ui_display_tape_control_status(port, current_image[port]->mode);
+        ioi_update_tape_control_status(port, current_image[port]->mode);
 
         if (current_image[port]->mode > 0) {
             if (datasette_enabled[port]) {

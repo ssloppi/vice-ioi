@@ -80,11 +80,20 @@
 int console_mode = 0;
 int video_disabled_mode = 0;
 
+/** \brief  Help was requested on the command line
+ *
+ * The command line contained -?/-h/-help/--help.
+ *
+ * Include "machine.h" to use this variable.
+ */
+int help_requested = 0;
+
 void main_loop_forever(void);
 
 #ifdef USE_VICE_THREAD
 void *vice_thread_main(void *);
 static pthread_t vice_thread;
+static pthread_mutex_t init_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 
@@ -103,13 +112,25 @@ int main_program(int argc, char **argv)
 {
     int i, n;
     const char *program_name;
-    int ishelp = 0;
     int loadconfig = 1;
     char term_tmp[TERM_TMP_SIZE];
     size_t name_len;
     int reserr;
     char *cmdline;
 
+#ifdef USE_VICE_THREAD
+    /*
+     * The init lock guarantees that all main thread init outcomes are visible
+     * to the VICE thread.
+     */
+    
+    pthread_mutex_lock(&init_lock);
+
+    archdep_thread_init();
+
+    mainlock_init();
+#endif
+    
     /*
      * OpenMP defaults to spinning threads for a couple hundred ms
      * after they are used, which means they max out forever in our
@@ -146,7 +167,7 @@ int main_program(int argc, char **argv)
     for (i = 1; i < argc; i++) {
         if ((!strcmp(argv[i], "-console")) || (!strcmp(argv[i], "--console"))) {
             console_mode = 1;
-            video_disabled_mode = 1;
+            /* video_disabled_mode = 1;  Breaks exitscreenshot */
         } else
         if ((!strcmp(argv[i], "-config")) || (!strcmp(argv[i], "--config"))) {
             if ((i + 1) < argc) {
@@ -184,7 +205,7 @@ int main_program(int argc, char **argv)
                    (!strcmp(argv[i], "--help")) ||
                    (!strcmp(argv[i], "-h")) ||
                    (!strcmp(argv[i], "-?"))) {
-            ishelp = 1;
+            help_requested = 1;
         }
     }
 
@@ -207,9 +228,11 @@ int main_program(int argc, char **argv)
     /* hotkeys init needs to be called after sysfile_init() but before the
      * resources and cmdline options of the hotkeys are registered.
      */
-    ui_hotkeys_init();
+    if (!help_requested) {
+        ui_hotkeys_init();
+    }
 
-    gfxoutput_early_init(ishelp);
+    gfxoutput_early_init(help_requested);
     if ((init_resources() < 0) || (init_cmdline_options() < 0)) {
         return -1;
     }
@@ -228,7 +251,7 @@ int main_program(int argc, char **argv)
         ui_init_with_args(&argc, argv);
     }
 
-    if ((!ishelp) && (loadconfig)) {
+    if ((!help_requested) && (loadconfig)) {
         /* Load the user's default configuration file.  */
         reserr = resources_load(NULL);
         if (reserr < 0 && reserr != RESERR_FILE_NOT_FOUND) {
@@ -331,7 +354,7 @@ int main_program(int argc, char **argv)
         return -1;
     }
 
-    if (!console_mode && video_init() < 0) {
+    if (/*!console_mode && */video_init() < 0) {
         return -1;
     }
 
@@ -351,6 +374,8 @@ int main_program(int argc, char **argv)
         log_error(LOG_DEFAULT, "Fatal: failed to launch main thread");
         return 1;
     }
+
+    pthread_mutex_unlock(&init_lock);
 
 #else /* #ifdef USE_VICE_THREAD */
 
@@ -391,9 +416,7 @@ void vice_thread_shutdown(void)
         return;
     }
 
-    mainlock_obtain();
     mainlock_initiate_shutdown();
-    mainlock_release();
 
     pthread_join(vice_thread, NULL);
 
@@ -402,16 +425,14 @@ void vice_thread_shutdown(void)
 
 void *vice_thread_main(void *unused)
 {
-    archdep_thread_init();
-
-    mainlock_init();
-
-    main_loop_forever();
+    /* Let the mainlock system know which thread is the vice thread */
+    mainlock_set_vice_thread();
 
     /*
      * main_loop_forever() does not return, so we call archdep_thread_shutdown()
      * in the mainlock system which manages a direct pthread based thread exit.
      */
+    main_loop_forever();
 
     return NULL;
 }

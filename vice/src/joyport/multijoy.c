@@ -76,9 +76,12 @@ static uint8_t multijoy_address = 0;
 static joyport_t joyport_multijoy_joy_device;
 static joyport_t joyport_multijoy_control_device;
 
+static int joyport_enable_in_progres = 0;
+
 static int joyport_multijoy_joysticks_enable(int port, int value)
 {
     int val = value ? 1 : 0;
+    int otherport = 0;
 
     if (val == multijoy_enabled) {
         return 0;
@@ -93,7 +96,22 @@ static int joyport_multijoy_joysticks_enable(int port, int value)
             resources_set_int("JoyPort1Device", JOYPORT_ID_MULTIJOY_CONTROL);
         }
     } else {
+        if (!joyport_enable_in_progres) {
+            joyport_enable_in_progres = 1;
+            if (port == JOYPORT_1) {
+                resources_get_int("JoyPort2Device", &otherport);
+                if (otherport == JOYPORT_ID_MULTIJOY_CONTROL) {
+                    resources_set_int("JoyPort2Device", JOYPORT_ID_NONE);
+                }
+            } else {
+                resources_get_int("JoyPort1Device", &otherport);
+                if (otherport == JOYPORT_ID_MULTIJOY_CONTROL) {
+                    resources_set_int("JoyPort1Device", JOYPORT_ID_NONE);
+                }
+            }
+        }
         joystick_adapter_deactivate();
+        joyport_enable_in_progres = 0;
     }
 
     multijoy_enabled = val;
@@ -103,6 +121,27 @@ static int joyport_multijoy_joysticks_enable(int port, int value)
 
 static int joyport_multijoy_control_enable(int port, int value)
 {
+    int val = value ? 1 : 0;
+    int otherport = 0;
+
+    if (!val) {
+        if (!joyport_enable_in_progres) {
+            joyport_enable_in_progres = 1;
+            if (port == JOYPORT_1) {
+                resources_get_int("JoyPort2Device", &otherport);
+                if (otherport == JOYPORT_ID_MULTIJOY_JOYSTICKS) {
+                    resources_set_int("JoyPort2Device", JOYPORT_ID_NONE);
+                }
+            } else {
+                resources_get_int("JoyPort1Device", &otherport);
+                if (otherport == JOYPORT_ID_MULTIJOY_JOYSTICKS) {
+                    resources_set_int("JoyPort1Device", JOYPORT_ID_NONE);
+                }
+            }
+        }
+        joyport_enable_in_progres = 0;
+    }
+
     return 0;
 }
 
@@ -140,6 +179,7 @@ static joyport_t joyport_multijoy_joy_device = {
     NULL,                                    /* NO digital line store function */
     NULL,                                    /* NO pot-x read function */
     NULL,                                    /* NO pot-y read function */
+    NULL,                                    /* NO powerup function */
     multijoy_write_snapshot,                 /* device write snapshot function */
     multijoy_read_snapshot,                  /* device read snapshot function */
     NULL,                                    /* NO device hook function */
@@ -159,6 +199,7 @@ static joyport_t joyport_multijoy_control_device = {
     multijoy_store,                      /* digital line store function */
     NULL,                                /* NO pot-x read function */
     NULL,                                /* NO pot-y read function */
+    NULL,                                /* NO powerup function */
     NULL,                                /* NO device write snapshot function */
     NULL,                                /* NO device read snapshot function */
     NULL,                                /* NO device hook function */
@@ -184,7 +225,7 @@ int joyport_multijoy_resources_init(void)
    BYTE  | ADDRESS | which joystick is active
  */
 
-static char snap_module_name[] = "MULTIJOY";
+static const char snap_module_name[] = "MULTIJOY";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   0
 

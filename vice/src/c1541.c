@@ -59,6 +59,8 @@
 
 #include "version.h"
 
+#include "vicedate.h"
+
 #ifdef USE_SVN_REVISION
 # include "svnversion.h"
 #endif
@@ -127,6 +129,20 @@
 #define BLOCK_CMD_WIDTH     16
 
 
+/** \brief  Track/Sector link object
+ *
+ * Used in the `chain` command to detect cyclic references. Could perhaps be
+ * reused for other commands, in which case it would make sense to add a
+ * `prev` node to be able to iterate both ways and print links in their proper
+ * order.
+ */
+typedef struct link_s {
+    unsigned int track;     /**< track number */
+    unsigned int sector;    /**< sector number */
+    struct link_s *next;    /**< next node in linked list */
+} link_t;
+
+
 /** \brief  CBM DOS file type strings
  */
 static const char *cbm_filetypes[] = {
@@ -181,6 +197,7 @@ static int bpeek_cmd(int nargs, char **args);
 static int bpoke_cmd(int nargs, char **args);
 static int bread_cmd(int nargs, char **args);
 static int bwrite_cmd(int nargs, char **args);
+static int cd_cmd(int nargs, char **args);
 static int chain_cmd(int nargs, char **args);
 static int copy_cmd(int nargs, char **args);
 static int delete_cmd(int nargs, char **args);
@@ -322,6 +339,11 @@ const command_t command_list[] = {
       "file system",
       3, 4,
       bwrite_cmd },
+    { "cd",
+      "cd <hostdir>",
+      "Change current host directory path",
+      1, 1,
+      cd_cmd },
     { "chain",
       "chain <track> <sector> [<unit>] | <filename>",
       "Follow and print block chain starting at (<track>,<sector>)",
@@ -979,6 +1001,80 @@ static int is_valid_cbm_file_name(const char *name)
     /* Notice that ':' is the same on PETSCII and ASCII.  */
     return strchr(name, ':') == NULL;
 }
+
+
+/*
+ * Simple linked list to keep track of track/sector links, currently only
+ * used for the `chain` command to detect cyclic references.
+ */
+
+/** \brief  Add (\a track, \a sector) to links
+ *
+ * \param[in]   link    linked list with track/sector links
+ * \param[in]   track   track number
+ * \param[in]   sector  sector number
+ *
+ * \return  new head of the linked list
+ */
+static link_t *link_add(link_t *link, unsigned int track, unsigned int sector)
+{
+    link_t *node = lib_malloc(sizeof *node);
+
+    node->track = track;
+    node->sector = sector;
+    node->next = link;
+
+    return node;
+}
+
+/* unused at the moment, but useful for debugging */
+#if 0
+/** \brief  Dump \a link and its siblings on stdout
+ *
+ * \param[in]   link    linked list node
+ */
+static void link_print(link_t *link)
+{
+    while (link != NULL) {
+        printf("(%2u,%2u) -> ", link->track, link->sector);
+        link = link->next;
+    }
+}
+#endif
+
+/** \brief  Free linked list
+ *
+ * \param[in]   link    linked list node
+ */
+static void link_free(link_t *link)
+{
+    while (link != NULL) {
+        link_t *next = link->next;
+        lib_free(link);
+        link = next;
+    }
+}
+
+
+/** \brief  Find linked list node for (\a track, \a sector)
+ *
+ * \param[in]   link    linked list node to start looking
+ * \param[in]   track   track number
+ * \param[in]   sector  track sector
+ *
+ * \return  node when found or `NULL` when not found
+ */
+static link_t *link_find(link_t *link, unsigned int track, unsigned int sector)
+{
+    while (link != NULL) {
+        if (link-> track == track && link->sector == sector) {
+            break;
+        }
+        link = link->next;
+    }
+    return link;
+}
+
 
 /* ------------------------------------------------------------------------- */
 
@@ -2039,6 +2135,7 @@ static int bwrite_cmd(int nargs, char **args)
 }
 
 
+
 /** \brief  Follow and print a block chain
  *
  * \param[in]   nargs   number of arguments
@@ -2055,6 +2152,7 @@ static int chain_cmd(int nargs, char **args)
     unsigned int sector;
     vdrive_t *vdrive;
     int err;
+    link_t *link;
 
     if (nargs == 2) {
         /* assume filename, not (track,sector) */
@@ -2143,6 +2241,9 @@ static int chain_cmd(int nargs, char **args)
      *      checks the number of blocks against the maximum block size of the
      *      largest image type.
      */
+
+    link = link_add(NULL, track, sector);
+
     do {
         unsigned char buffer[RAW_BLOCK_SIZE];
 
@@ -2155,8 +2256,24 @@ static int chain_cmd(int nargs, char **args)
         }
         track = buffer[0];
         sector = buffer[1];
+
+        if (link_find(link, track, sector) != NULL) {
+            printf("cyclic reference found to (%u,%u)!\n", track, sector);
+            break;
+        }
+        link = link_add(link, track, sector);
+
     } while (track > 0);
-    printf("%u\n", sector);
+
+    if (track > 0) {
+        printf("%u\n", sector);
+    }
+#if 0
+    printf("Dumping links:\n");
+    link_print(link);
+    putchar('\n');
+#endif
+    link_free(link);
 
     return FD_OK;
 }
@@ -5152,6 +5269,7 @@ static int write_cmd(int nargs, char **args)
     fileio_info_t *finfo;
     char *src_name;
     long rel_record_length = 0;
+    int result = FD_OK;
 
     if (nargs == 3) {
         /* write <source> <dest> */
@@ -5203,9 +5321,15 @@ static int write_cmd(int nargs, char **args)
 
     if (check_drive_index(dnr) < 0) {
         printf("check_drive_index() failed\n");
+        if (dest_name != NULL) {
+           lib_free(dest_name);
+        }
         return FD_BADDEV;
     }
     if (check_drive_ready(dnr) < 0) {
+        if (dest_name != NULL) {
+           lib_free(dest_name);
+        }
         return FD_NOTREADY;
     }
 
@@ -5220,6 +5344,9 @@ static int write_cmd(int nargs, char **args)
         fprintf(stderr, "cannot read file `%s': %s\n", args[1],
                 strerror(errno));
         lib_free(src_name);
+        if (dest_name != NULL) {
+           lib_free(dest_name);
+        }
         return FD_NOTRD;
     }
 
@@ -5257,6 +5384,7 @@ static int write_cmd(int nargs, char **args)
 
             if (vdrive_iec_write(drives[dnr], c, 1)) {
                 fprintf(stderr, "no space on image?\n");
+                result = FD_WRTERR;
                 break;
             }
         }
@@ -5307,6 +5435,7 @@ static int write_cmd(int nargs, char **args)
 
                 if ((err = vdrive_iec_write(drives[dnr], c, 1)) != SERIAL_OK) {
                     fprintf(stderr, "no space on image? (err %d)\n", err);
+                    result = FD_WRTERR;
                     break;
                 }
             }
@@ -5318,7 +5447,7 @@ static int write_cmd(int nargs, char **args)
 
     lib_free(dest_name);
     lib_free(src_name);
-    return FD_OK;
+    return result;
 }
 
 static int unzip_cmd(int nargs, char **args)
@@ -5544,7 +5673,7 @@ int main(int argc, char **argv)
         /* TODO: Add completions on Windows, somehow, or perhaps not */
 
         version_cmd(0, NULL);
-        printf("Copyright 1995-2021 The VICE Development Team.\n"
+        printf("Copyright 1995-" VICEDATE_YEAR_STR " The VICE Development Team.\n"
                "C1541 is free software, covered by the GNU General Public License,"
                " and you are\n"
                "welcome to change it and/or distribute copies of it under certain"
@@ -5678,6 +5807,23 @@ static int p00save_cmd(int nargs, char **args)
 
     p00save[dnr] = (unsigned int)enable;
     return FD_OK;
+}
+
+
+/** \brief  Change current host directory path
+ *
+ * Syntax: cd \<hostdir>
+ *
+ * Where \a hostdir is the path to directory on the host
+ *
+ * \param[in]   nargs   number of arguments
+ * \param[in]   args    optional arguments (unused
+ *
+ * \return  0 on success, < 0 on failure
+ */
+static int cd_cmd(int nargs, char **args)
+{
+    return ioutil_chdir(args[1]) ? FD_BADNAME : FD_OK;
 }
 
 

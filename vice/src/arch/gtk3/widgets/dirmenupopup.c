@@ -48,6 +48,7 @@
 #include "imagecontents/diskcontents.h"
 #include "lib.h"
 #include "log.h"
+#include "machine.h"
 #include "tape.h"
 #include "tapeport.h"
 #include "util.h"
@@ -155,6 +156,7 @@ static void dir_item_apply_style(GtkWidget *item)
  * XXX: This is an UNHOLY MESS, and should be refactored
  *
  * \param[in]   unit        unit number (1,2 for tapes, 8-11 for drives)
+ * \param[in]   drive       drive number (0 or 1 (dual-drives))
  * \param[in]   func        function to read image contents
  * \param[in]   response    function to call when an item has been selected
  *
@@ -162,6 +164,7 @@ static void dir_item_apply_style(GtkWidget *item)
  */
 GtkWidget *dir_menu_popup_create(
         int unit,
+        int drive,
         read_contents_func_type func,
         void (*response)(const char *, int, int, unsigned int))
 {
@@ -174,8 +177,7 @@ GtkWidget *dir_menu_popup_create(
     char *tmp;
     int index;
     int blocks;
-    /* TODO: drive 1? */
-    unsigned int drive = 0;
+    unsigned int drv = (unsigned int)drive;
 
     /* create style providers */
     if (!create_css_providers()) {
@@ -199,8 +201,8 @@ GtkWidget *dir_menu_popup_create(
         struct disk_image_s *diskimg = NULL;
         autostart_diskimage = NULL;
 
-        debug_gtk3("Getting disk_image reference for unit #%d.", unit);
-        diskimg = file_system_get_image(unit, drive);
+        debug_gtk3("Getting disk_image reference for unit #%d, drive %u", unit, drv);
+        diskimg = file_system_get_image(unit, drv);
         if (diskimg == NULL) {
             debug_gtk3("failed: got NULL.");
         } else {
@@ -231,11 +233,25 @@ GtkWidget *dir_menu_popup_create(
         util_fname_split(autostart_diskimage, NULL, &tmp);
     }
     if (unit >= DRIVE_UNIT_MIN) {
-        g_snprintf(buffer, sizeof(buffer), "Directory of unit %d drive %u (%s):",
-                   unit, drive, tmp ? tmp : "n/a");
+        if (drive_is_dualdrive_by_devnr(unit)) {
+            g_snprintf(buffer, sizeof(buffer),
+                       "Directory of drive #%d:%u (%s):",
+                       unit, drv, tmp ? tmp : "n/a");
+        } else {
+            g_snprintf(buffer, sizeof(buffer),
+                       "Directory of drive #%d (%s):",
+                       unit, tmp ? tmp : "n/a");
+        }
     } else {
-        g_snprintf(buffer, sizeof(buffer), "Directory of tape #%d (%s):",
-                   unit, tmp ? tmp : "n/a");
+        if (machine_class == VICE_MACHINE_PET) {
+            g_snprintf(buffer, sizeof(buffer),
+                       "Directory of tape #%d (%s):",
+                       unit, tmp ? tmp : "n/a");
+        } else {
+            g_snprintf(buffer, sizeof(buffer),
+                       "Directory of tape (%s):",
+                       tmp ? tmp : "n/a");
+        }
     }
     item = gtk_menu_item_new_with_label(buffer);
     gtk_container_add(GTK_CONTAINER(menu), item);
@@ -284,7 +300,7 @@ GtkWidget *dir_menu_popup_create(
                                   GINT_TO_POINTER(unit - DRIVE_UNIT_MIN));
                 g_object_set_data(G_OBJECT(item),
                                   "DriveNumber",
-                                  GUINT_TO_POINTER(drive));
+                                  GUINT_TO_POINTER(drv));
 
                 dir_item_apply_style(item);
 

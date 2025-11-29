@@ -34,14 +34,18 @@
 #include <stdio.h>
 #include <gtk/gtk.h>
 #include "debug_gtk3.h"
+#include "hotkeys.h"
 #include "lib.h"
 #include "log.h"
 #include "ui.h"
 #include "kbddebugwidget.h"
 #include "keyboard.h"
 #include "mainlock.h"
+#include "uimachinemenu.h"
 #include "uimenu.h"
 #include "uimedia.h"
+#include "uistatusbar.h"
+#include "resources.h"
 
 #include "kbd.h"
 
@@ -49,11 +53,13 @@
 #include <tchar.h>
 
 #define IOI_INPUT_QUEUE_SIZE 256
+#define INPUT_QUEUE_CHECK_INTERVAL_MS 8
 
-int *pBufIQ; // pointer to shared data
+int *intPtrIQ; // pointer to shared data
 HANDLE hMapFileIQ;
 TCHAR VICE_IOI_INPUT_QUEUE_NAME[] = TEXT("VICE_IOI_INPUT_QUEUE");
 int input_queue_pointer =  0;
+int inputQueueEnabled = 0;
 
 /** \brief  Initialize keyboard handling
  */
@@ -63,14 +69,18 @@ void kbd_arch_init(void)
      * the UI init stuff is called, allocating the hotkeys array again and thus
      * causing a memory leak
      */
+
+     ioi_input_queue_init();
 }
 
 
-/** \brief  Shutdown keyboard handling (NOP)
+/** \brief  Shutdown keyboard handling
  */
 void kbd_arch_shutdown(void)
 {
     /* Also don't call kbd_hotkey_shutdown() here */
+
+    ioi_input_queue_shutdown();
 }
 
 
@@ -258,8 +268,8 @@ static void kbd_sync_caps_lock(void)
 static int kbd_get_modifier(GdkEvent *report)
 {
     int ret = 0;
-    /* printf("key.state: %04x key.keyval: %04x (%s) key.hardware_keycode: %04x\n", 
-            report->key.state, report->key.keyval, gdk_keyval_name(report->key.keyval), 
+    /* printf("key.state: %04x key.keyval: %04x (%s) key.hardware_keycode: %04x\n",
+            report->key.state, report->key.keyval, gdk_keyval_name(report->key.keyval),
             report->key.hardware_keycode); */
     if (report->key.state & GDK_SHIFT_MASK) {
         if (shiftl_state || capslock_state) {
@@ -398,56 +408,32 @@ static int removepressedkey(GdkEvent *report, int *key, int *mod)
     return 0;
 }
 
-iq_key_t ioi_input_queue_poll(void)
+/** \brief  Check if a key event report refers to a "reset" action
+ *
+ * \param[in]   report  event object
+ *
+ * \return  TRUE if reported key combo is mapped to a "reset" action
+ */
+static gboolean isresethotkey(GdkEvent *report)
 {
-    iq_key_t iq_key = { .keycode = -1, .press = 0, .release = 0 };
-
-    if (pBufIQ)
-    {
-        int keycode = pBufIQ[input_queue_pointer];
-
-        if (keycode > -1)
-        {
-            iq_key.keycode = keycode;
-
-            pBufIQ[input_queue_pointer] = -1;
-            input_queue_pointer++;
-            if (input_queue_pointer >= IOI_INPUT_QUEUE_SIZE) input_queue_pointer = 0;
-
-            int pressValue = pBufIQ[input_queue_pointer];
-
-            iq_key.press = pressValue == 1 ? 1 : 0;
-            iq_key.release = pressValue == 0 ? 1 : 0;
-
-            pBufIQ[input_queue_pointer] = -1;
-            input_queue_pointer++;
-            if (input_queue_pointer >= IOI_INPUT_QUEUE_SIZE) input_queue_pointer = 0;
+    static char *checkaccel[2] = { "reset-soft", "reset-hard" };
+    gboolean res = FALSE;
+    int i;
+    char *this_accel = gtk_accelerator_get_label(report->key.keyval,
+                                                 report->key.state & VHK_ACCEPTED_MODIFIERS);
+    for (i = 0; i < 2; i++) {
+        ui_menu_item_t *item = ui_get_vice_menu_item_by_name(checkaccel[i]);
+        if (item != NULL) {
+            char *accel = gtk_accelerator_get_label(item->keysym, item->modifier);
+            if (!strcmp(this_accel, accel)) {
+                i = 2;
+                res = TRUE;
+            }
+            g_free(accel);
         }
     }
-
-    return iq_key;
-}
-
-static gboolean ioi_input_queue_poll_all(void)
-{
-    gboolean retVal = FALSE;
-    iq_key_t iq_key = ioi_input_queue_poll();
-
-    while (iq_key.keycode > -1)
-    {
-        if (iq_key.press == 1)
-        {
-            keyboard_key_pressed((signed long)iq_key.keycode, 0);
-            retVal = TRUE;
-        }
-        else if (iq_key.release == 1)
-        {
-            keyboard_key_released((signed long)iq_key.keycode, 0);
-            retVal = FALSE;
-        }
-        iq_key = ioi_input_queue_poll();
-    }
-    return retVal;
+    g_free(this_accel);
+    return res;
 }
 
 /** \brief  Gtk keyboard event handler
@@ -464,8 +450,6 @@ static gboolean kbd_event_handler(GtkWidget *w, GdkEvent *report, gpointer gp)
     int mod;
 
     key = report->key.keyval;
-    ioi_input_queue_poll_all();
-
     switch (report->type) {
         case GDK_KEY_PRESS:
             /* fprintf(stderr, "GDK_KEY_PRESS: %u %04x.\n",
@@ -501,17 +485,26 @@ static gboolean kbd_event_handler(GtkWidget *w, GdkEvent *report, gpointer gp)
                 key = report->key.keyval = GDK_KEY_KP_Decimal;
             }
 
-            kdb_debug_widget_update(report);
+            ui_statusbar_update_kbd_debug(report);
 
+            /* Don't hold the mainlock while dealing with hotkeys. Some of these
+               need to run with an unlocked handler in order to avoid glitching VICE. */
+            mainlock_release();
             if (gtk_window_activate_key(GTK_WINDOW(w), (GdkEventKey *)report)) {
+                mainlock_obtain();
                 /* mnemonic or accelerator was found and activated. */
-                /* release all previously pressed keys to prevent stuck keys */
-                keyspressed = 0;
-                kbd_fix_shift_clear();
-                keyboard_key_clear();
+                /* release all previously pressed keys to prevent stuck keys,
+                   except we detected a "reset" hotkey (because certain cartridges
+                   or kernals want you to hold a key on reset for certain features) */
+                if (!isresethotkey(report)) {
+                    keyspressed = 0;
+                    keyboard_key_clear();
+                    kbd_fix_shift_clear();
+                }
                 kbd_sync_caps_lock();
                 return TRUE;
             }
+            mainlock_obtain();
 
             /* Disable weird hack, doesn't appear to be required anymore
              * --compyx
@@ -579,7 +572,7 @@ static gboolean kbd_event_handler(GtkWidget *w, GdkEvent *report, gpointer gp)
                 key = report->key.keyval = GDK_KEY_KP_Decimal;
             }
 
-            kdb_debug_widget_update(report);
+            ui_statusbar_update_kbd_debug(report);
 
             if (removepressedkey(report, &key, &mod)) {
 #if 0
@@ -669,22 +662,95 @@ void kbd_connect_handlers(GtkWidget *widget, void *data)
             G_CALLBACK(kbd_event_handler), data);
 }
 
-void ioi_input_queue_init(void)
-{
-    hMapFileIQ = OpenFileMapping(FILE_MAP_ALL_ACCESS, 0, VICE_IOI_INPUT_QUEUE_NAME);
-    if (hMapFileIQ == NULL) {
-        debug_gtk3(" - Could not open file mapping object (%ld).", GetLastError());
+static gboolean ioi_input_queue_event_handler(gpointer user_data) {
+
+    // Input queue event structure:
+    // [0] = keycode
+    // [1] = pressValue (1=key press, 0=key release, -1=no event)
+    // [2] = .. (next event)
+
+    // Read the pressValue first to ensure the whole event is placed before processing the event
+    int pressValue = intPtrIQ[input_queue_pointer + 1];
+
+    if (pressValue == -1) {
+        return G_SOURCE_CONTINUE;
     }
 
-    pBufIQ = (int*) MapViewOfFile(hMapFileIQ, FILE_MAP_ALL_ACCESS, 0, 0, 0);
-    if (!pBufIQ) {
-        debug_gtk3(" - Could not map view of file (%ld).", GetLastError());
-        CloseHandle(hMapFileIQ);
+    int keycode = intPtrIQ[input_queue_pointer];
+
+    // Reset the the last input event and move pointer to await for the next event
+    intPtrIQ[input_queue_pointer++] = -1;
+    intPtrIQ[input_queue_pointer++] = -1;
+
+    if (input_queue_pointer >= IOI_INPUT_QUEUE_SIZE) input_queue_pointer = 0;
+
+    if (pressValue < -1 || pressValue > 1 || keycode < -1) {
+        log_message(LOG_DEFAULT, "IOI input queue event handler: invalid data at pointer [%d], keycode: %d, pressValue: %d",
+            input_queue_pointer, keycode, pressValue);
+        return G_SOURCE_CONTINUE;
     }
+
+    mainlock_obtain();
+
+    if (pressValue == 1)
+    {
+        keyboard_key_pressed((signed long)keycode, 0);
+    }
+    else
+    {
+        keyboard_key_released((signed long)keycode, 0);
+    }
+
+    mainlock_release();
+
+    return G_SOURCE_CONTINUE;
+}
+
+void ioi_input_queue_init(void)
+{
+    resources_get_int("IOImode", &inputQueueEnabled);
+
+    if (!inputQueueEnabled) {
+        return;
+    }
+
+    log_message(LOG_DEFAULT, "IOI input queue init.");
+
+    hMapFileIQ = OpenFileMapping(FILE_MAP_ALL_ACCESS, 0, VICE_IOI_INPUT_QUEUE_NAME);
+
+    if (hMapFileIQ == NULL) {
+        log_message(LOG_DEFAULT, "IOI input queue init ERROR. Unable to open file mapping, error: %lu", GetLastError());
+        inputQueueEnabled = 0;
+        return;
+    }
+
+    intPtrIQ = (int*) MapViewOfFile(hMapFileIQ, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+
+    if (!intPtrIQ) {
+        log_message(LOG_DEFAULT, "IOI input queue init ERROR. Failed to map view of file, error: %lu", GetLastError());
+        ioi_input_queue_shutdown();
+        return;
+    }
+
+    // Register GTK event handler to poll the input queue
+    g_timeout_add(INPUT_QUEUE_CHECK_INTERVAL_MS, ioi_input_queue_event_handler, NULL);
 }
 
 void ioi_input_queue_shutdown(void)
 {
-    UnmapViewOfFile(pBufIQ);
-    CloseHandle(hMapFileIQ);
+    if (!inputQueueEnabled) {
+        return;
+    }
+
+    log_message(LOG_DEFAULT, "IOI input queue shutdown");
+    inputQueueEnabled = 0;
+
+    if (intPtrIQ != NULL) {
+        UnmapViewOfFile(intPtrIQ);
+        intPtrIQ = NULL;
+    }
+    if (hMapFileIQ != NULL) {
+        CloseHandle(hMapFileIQ);
+        hMapFileIQ = NULL;
+    }
 }

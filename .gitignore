@@ -62,18 +62,14 @@ dkms.conf
 **/.deps/
 
 vice/GTK3VICE-*
-vice/Makefile*
-vice/build/**/Makefile*
-vice/build/**Makefile*
-vice/data/**/Makefile*
-vice/src/**/Makefile*
-vice/man/Makefile*
+vice/**/Makefile.in
+vice/**/Makefile
 
 vice/Compile
 vice/config.cache
 vice/config.status
 vice/configure
-vice/configure.ac
+vice/**/configure~
 vice/depcomp
 vice/missing
 vice/vice-mint-sdl.spec
@@ -93,7 +89,6 @@ vice/src/version.h
 vice/src/vice-version.sh
 
 # Build files - data/common
-vice/data/common/vice.gresource
 vice/data/common/vsid.ico
 vice/data/common/vsid.res
 vice/data/common/x128.ico
@@ -116,8 +111,7 @@ vice/data/common/xvic.ico
 vice/data/common/xvic.res
 
 # Build files - doc / man
-vice/doc/**/Makefile*
-vice/doc/texinfo.tex
+vice/doc/**/Makefile
 vice/doc/vice.chm
 vice/doc/vice.guide
 vice/doc/vice.hlp

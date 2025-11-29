@@ -11,6 +11,8 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/arch/shared \
 	-I$(top_builddir)/src \
 	-I$(top_srcdir)/src \
+	-I$(top_srcdir)/src/monitor \
+	-I$(top_srcdir)/src/raster \
 	-I$(top_srcdir)/src/vdrive \
 	-I$(top_srcdir)/src/rtc \
 	-I$(top_srcdir)/src/lib/p64 \

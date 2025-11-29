@@ -93,8 +93,8 @@ int machine_keymap_index;
 static char *ExitScreenshotName = NULL;
 static char *ExitScreenshotName1 = NULL;
 
-
-
+/* NOTE: this function is very similar to drive_jam - in case the behavior
+         changes, change drive_jam too */
 unsigned int machine_jam(const char *format, ...)
 {
     va_list ap;
@@ -185,6 +185,8 @@ static void machine_trigger_reset_internal(const unsigned int mode)
             maincpu_trigger_reset();
             break;
     }
+
+    ui_display_reset(0, mode);
 }
 
 void machine_trigger_reset(const unsigned int mode)

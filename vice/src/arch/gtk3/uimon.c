@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <limits.h>
 
 #include "novte/novte.h"
 
@@ -88,7 +89,7 @@ static gboolean uimon_window_resume_impl(gpointer user_data);
  */
 static struct console_private_s {
     pthread_mutex_t lock;
-    
+
     GtkWidget *window;  /**< windows */
     GtkWidget *term;    /**< could be a VTE instance? */
     char *input_buffer;
@@ -170,7 +171,7 @@ void uimon_write_to_terminal(struct console_private_s *t,
 
     memcpy(fixed.output_buffer + fixed.output_buffer_used_size, data, length);
     fixed.output_buffer_used_size += length;
-    
+
     if (!write_scheduled) {
         /* schedule a call on the ui thread */
         gdk_threads_add_timeout(0, write_to_terminal, NULL);
@@ -443,7 +444,7 @@ static gboolean key_press_event (GtkWidget   *widget,
     gboolean retval = FALSE;
 
     gdk_event_get_state((GdkEvent*)event, &state);
-    
+
     pthread_mutex_lock(&fixed.lock);
 
     if (event->type == GDK_KEY_PRESS) {
@@ -460,10 +461,10 @@ static gboolean key_press_event (GtkWidget   *widget,
         retval = plain_key_pressed(&fixed.input_buffer, event->keyval);
         goto done;
     }
-    
+
 done:
     pthread_mutex_unlock(&fixed.lock);
-    
+
     return retval;
 }
 
@@ -482,19 +483,19 @@ static gboolean button_press_event(GtkWidget *widget,
     pthread_mutex_lock(&fixed.lock);
     fixed.input_buffer = append_string_to_input_buffer(fixed.input_buffer, widget, GDK_SELECTION_PRIMARY);
     pthread_mutex_unlock(&fixed.lock);
-    
+
     return TRUE;
 }
 
 static gboolean close_window(GtkWidget *widget, GdkEvent *event, gpointer user_data)
 {
     pthread_mutex_lock(&fixed.lock);
-    
+
     lib_free(fixed.input_buffer);
     fixed.input_buffer = NULL;
-    
+
     pthread_mutex_unlock(&fixed.lock);
-    
+
     return gtk_widget_hide_on_delete(widget);
 }
 
@@ -506,20 +507,20 @@ int uimon_get_string(struct console_private_s *t, char* string, int string_len)
         int i;
 
         pthread_mutex_lock(&t->lock);
-        
+
         if (!t->input_buffer) {
             /* TODO: Not sure if this check makes sense anymore, needs testing without */
             pthread_mutex_unlock(&t->lock);
             return -1;
         }
-        
+
         if (strlen(t->input_buffer) == 0) {
             /* There's no input yet, so have a little sleep and look again. */
             pthread_mutex_unlock(&t->lock);
             tick_sleep(tick_per_second() / 60);
             continue;
         }
-        
+
         for (i = 0; i < strlen(t->input_buffer) && retval < string_len; i++, retval++) {
             string[retval]=t->input_buffer[i];
         }
@@ -551,10 +552,13 @@ static void screen_resize_window_cb2 (VteTerminal *terminal,
                          gpointer* window)
 {
     gint width, height;
+    gint xpos;
+    gint ypos;
     glong cwidth, cheight;
     glong newwidth, newheight;
 
     gtk_window_get_size (GTK_WINDOW(fixed.window), &width, &height);
+    gtk_window_get_position(GTK_WINDOW(fixed.window), &xpos, &ypos);
     cwidth = vte_terminal_get_char_width (VTE_TERMINAL(fixed.term));
     cheight = vte_terminal_get_char_height (VTE_TERMINAL(fixed.term));
 
@@ -566,6 +570,16 @@ static void screen_resize_window_cb2 (VteTerminal *terminal,
     if (newheight < 1) {
         newheight = 1;
     }
+
+    if (xpos >= 0 && ypos >= 0) {
+        resources_set_int("MonitorXPos", xpos);
+        resources_set_int("MonitorYPos", ypos);
+    }
+    if (width > 0 && height > 0) {
+        resources_set_int("MonitorWidth", width);
+        resources_set_int("MonitorHeight", height);
+    }
+
 
     vte_terminal_set_size(VTE_TERMINAL(fixed.term), newwidth, newheight);
 }
@@ -655,6 +669,55 @@ bool uimon_set_font(void)
     return true;
 }
 
+
+/** \brief  Set foreground color
+ *
+ * Set VTE terminal foreground color to \a color.
+ *
+ * \param[in]   color   Gdk RGBA color string
+ *
+ * \return  bool
+ *
+ * \see     https://docs.gtk.org/gdk3/method.RGBA.parse.html
+ */
+bool uimon_set_foreground_color(const char *color)
+{
+    if (fixed.term != NULL) {
+        GdkRGBA rgba;
+
+        if (gdk_rgba_parse(&rgba, color)) {
+            vte_terminal_set_color_foreground(VTE_TERMINAL(fixed.term), &rgba);
+            return true;
+        }
+    }
+    return false;
+}
+
+
+/** \brief  Set foreground color
+ *
+ * Set VTE terminal foreground color to \a color.
+ *
+ * \param[in]   color   Gdk RGBA color string
+ *
+ * \return  bool
+ *
+ * \see     https://docs.gtk.org/gdk3/method.RGBA.parse.html
+ */
+bool uimon_set_background_color(const char *color)
+{
+    if (fixed.term != NULL) {
+        GdkRGBA rgba;
+
+        if (gdk_rgba_parse(&rgba, color)) {
+            vte_terminal_set_color_background(VTE_TERMINAL(fixed.term), &rgba);
+            return true;
+        }
+    }
+    return false;
+}
+
+
 static gboolean uimon_window_open_impl(gpointer user_data)
 {
     bool display_now = (bool)user_data;
@@ -662,15 +725,28 @@ static gboolean uimon_window_open_impl(gpointer user_data)
     GdkGeometry hints;
     GdkPixbuf *icon;
     int sblines;
+    int xpos = -1;
+    int ypos = -1;
+    int width = -1;
+    int height = -1;
 
     pthread_mutex_lock(&fixed.lock);
 
     resources_get_int("MonitorScrollbackLines", &sblines);
+    resources_get_int("MonitorXPos", &xpos);
+    resources_get_int("MonitorYPos", &ypos);
+    resources_get_int("MonitorHeight", &height);
+    resources_get_int("MonitorWidth", &width);
 
     if (fixed.window == NULL) {
         fixed.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
         gtk_window_set_title(GTK_WINDOW(fixed.window), "VICE monitor");
-        gtk_window_set_position(GTK_WINDOW(fixed.window), GTK_WIN_POS_CENTER);
+        if (xpos < 0 && ypos < 0) {
+            /* Only center if we didn't get either a previous position or
+             * the position was set via the command line.
+             */
+            gtk_window_set_position(GTK_WINDOW(fixed.window), GTK_WIN_POS_CENTER);
+        }
         gtk_widget_set_app_paintable(fixed.window, TRUE);
         gtk_window_set_deletable(GTK_WINDOW(fixed.window), TRUE);
 
@@ -701,6 +777,15 @@ static gboolean uimon_window_open_impl(gpointer user_data)
                                      GDK_HINT_RESIZE_INC |
                                      GDK_HINT_MIN_SIZE |
                                      GDK_HINT_BASE_SIZE);
+
+         if (xpos > INT_MIN && ypos > INT_MIN) {
+            gtk_window_move(GTK_WINDOW(fixed.window), xpos, ypos);
+        }
+        if (width >= 0 && height >= 0) {
+            gtk_window_resize(GTK_WINDOW(fixed.window), width, height);
+        }
+
+
         scrollbar = gtk_scrollbar_new(GTK_ORIENTATION_VERTICAL,
                 gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(fixed.term)));
 
@@ -738,7 +823,7 @@ static gboolean uimon_window_open_impl(gpointer user_data)
     } else {
         vte_terminal_set_scrollback_lines (VTE_TERMINAL(fixed.term), sblines);
     }
-    
+
     pthread_mutex_unlock(&fixed.lock);
 
     if (display_now) {
@@ -989,7 +1074,7 @@ char *uimon_get_in(char **ppchCommandLine, const char *prompt)
         fixed.input_buffer = lib_strdup("");
     }
     pthread_mutex_unlock(&fixed.lock);
-    
+
     vte_linenoiseSetCompletionCallback(monitor_completions);
     p = vte_linenoise(prompt, &fixed);
     if (p) {
@@ -1012,7 +1097,7 @@ int console_init(void)
     char *short_name;
     int takes_filename_as_arg;
     pthread_mutexattr_t lock_attributes;
-    
+
     /* our console lock needs to be recursive */
     pthread_mutexattr_init(&lock_attributes);
     pthread_mutexattr_settype(&lock_attributes, PTHREAD_MUTEX_RECURSIVE);
@@ -1045,7 +1130,7 @@ int console_init(void)
 int console_close_all(void)
 {
     int i;
-    
+
     pthread_mutex_lock(&fixed.lock);
 
     if (fixed.input_buffer) {
@@ -1055,7 +1140,7 @@ int console_close_all(void)
         lib_free(fixed.input_buffer);
         fixed.input_buffer = NULL;
     }
-    
+
     pthread_mutex_unlock(&fixed.lock);
 
     if (native_monitor()) {

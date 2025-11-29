@@ -82,6 +82,7 @@ static userport_device_t sampler_device = {
     NULL,                                /* NO store sp1 pin function */
     NULL,                                /* NO read sp1 pin function */
     NULL,                                /* NO store sp2 pin function */
+    NULL,                                /* NO powerup function */
     NULL,                                /* NO read sp2 pin function */
     NULL,                                /* NO reset function */
     userport_8bss_write_snapshot_module, /* snapshot write function */
@@ -141,7 +142,7 @@ static uint8_t userport_8bss_read_pbx(uint8_t orig)
    BYTE  | channel | channel flag
  */
 
-static char snap_module_name[] = "UP8BSS";
+static const char snap_module_name[] = "UP8BSS";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 

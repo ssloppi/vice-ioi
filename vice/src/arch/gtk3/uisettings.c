@@ -65,7 +65,6 @@
 #include "util.h"
 #include "machine.h"
 #include "resources.h"
-#include "vsync.h"
 
 #include "vice_gtk3.h"
 
@@ -1428,7 +1427,7 @@ static ui_settings_tree_node_t host_nodes_scpu64[] = {
 static ui_settings_tree_node_t machine_nodes_scpu64[] = {
     { "Model",
       "model",
-      settings_model_widget_create, NULL }, 
+      settings_model_widget_create, NULL },
     { "SCPU64",
       "scpu64",
       scpu64_settings_widget_create, NULL },
@@ -2634,13 +2633,7 @@ static GtkTreeStore *populate_tree_model(void)
             for (c = 0; list[c].name != NULL; c++) {
                 char buffer[256];
 
-                /* mark items without callback with 'TODO' */
-                //if (list[c].callback != NULL) {
                 g_snprintf(buffer, 256, "%s", list[c].name);
-                //} else {
-                //    g_snprintf(buffer, 256, "TODO: %s", list[c].name);
-                //}
-
                 gtk_tree_store_append(model, &child, &iter);
                 gtk_tree_store_set(model, &child,
                         COLUMN_NAME, buffer,
@@ -2959,8 +2952,6 @@ static GtkWidget *dialog_create_helper(void)
     GtkWidget *dialog;
     GtkWidget *content;
     char title[256];
-
-    vsync_suspend_speed_eval();
 
     g_snprintf(title, sizeof(title), "%s Settings", machine_name);
 

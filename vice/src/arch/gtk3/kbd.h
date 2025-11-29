@@ -71,7 +71,6 @@ typedef struct {
     int release;
 } iq_key_t;
 
-iq_key_t ioi_input_queue_poll(void);
 void ioi_input_queue_init(void);
 void ioi_input_queue_shutdown(void);
 

@@ -95,6 +95,7 @@
 #include "sysfile.h"
 #include "traps.h"
 #include "types.h"
+#include "ui.h"
 #include "uiapi.h"
 #include "uimon.h"
 #include "util.h"
@@ -173,6 +174,8 @@ int break_on_dummy_access = 0;
 RADIXTYPE default_radix;
 MEMSPACE default_memspace = e_comp_space;
 static bool inside_monitor = false;
+static bool should_pause_on_exit_mon = false;
+static bool pause_on_exit_mon = false;
 static unsigned int instruction_count;
 static bool skip_jsrs;
 static int wait_for_return_level;
@@ -956,6 +959,11 @@ void mon_jump(MON_ADDR addr)
 void mon_go(void)
 {
     exit_mon = 1;
+    
+    if (should_pause_on_exit_mon || ui_pause_active()) {
+        should_pause_on_exit_mon = false;
+        pause_on_exit_mon = true;
+    }
 }
 
 /* exit monitor, close monitor window  */
@@ -963,6 +971,11 @@ void mon_exit(void)
 {
     exit_mon = 1;
     mon_console_close_on_leaving = 1;
+    
+    if (should_pause_on_exit_mon || ui_pause_active()) {
+        should_pause_on_exit_mon = false;
+        pause_on_exit_mon = true;
+    }
 }
 
 /* If we want 'quit' for OS/2 I couldn't leave the emulator by calling exit(0)
@@ -1246,26 +1259,30 @@ void mon_cart_freeze(void)
     }
 }
 
-void mon_userport_set_output(int value)
+IO_SIM_RESULT mon_userport_set_output(int value)
 { 
     if (machine_class == VICE_MACHINE_CBM5x0) {
         mon_out("Unsupported.\n");
+        return e_IO_SIM_RESULT_GENERAL_FAILURE;
     } else if (value >= 0x00 && value <= 0xff) {
-        userport_io_sim_set_pbx_ddr_lines(0xff);   /* Set data direction to output for all PBx lines */
         userport_io_sim_set_pbx_out_lines((uint8_t)value);
+        return e_IO_SIM_RESULT_OK;
     } else {
         mon_out("Illegal value.\n");
+        return e_IO_SIM_RESULT_ILLEGAL_VALUE;
     }
+
+    return 0;
 }
 
-void mon_joyport_set_output(int port, int value)
+IO_SIM_RESULT mon_joyport_set_output(int port, int value)
 {
     int command_ok = 0;
     int port_ok = 1;
 
     if (value < 0x00 || value > 0xff) {
         mon_out("Illegal value.\n");
-        return;
+        return e_IO_SIM_RESULT_ILLEGAL_VALUE;
     }
 
     switch (machine_class) {
@@ -1298,12 +1315,14 @@ void mon_joyport_set_output(int port, int value)
     }
 
     if (command_ok) {
-        joyport_io_sim_set_ddr_lines(0xff, port);   /* Set data direction to output for all joystick lines */
         joyport_io_sim_set_out_lines((uint8_t)value, port);
+        return e_IO_SIM_RESULT_OK;
     } else if (!port_ok) {
         mon_out("Illegal port.\n");
+        return e_IO_SIM_RESULT_ILLEGAL_PORT;
     } else {
         mon_out("Unsupported.\n");
+        return e_IO_SIM_RESULT_GENERAL_FAILURE;
     }
 }
 
@@ -2257,6 +2276,7 @@ void mon_add_name_to_symbol_table(MON_ADDR addr, char *name)
     int old_addr;
     MEMSPACE mem = addr_memspace(addr);
     uint16_t loc = addr_location(addr);
+    int silent = (playback_fp != NULL); /* suppress warnings when playing back label file */
 
     if (mem == e_default_space) {
         mem = default_memspace;
@@ -2271,11 +2291,11 @@ void mon_add_name_to_symbol_table(MON_ADDR addr, char *name)
 
     old_name = mon_symbol_table_lookup_name(mem, loc);
     old_addr = mon_symbol_table_lookup_addr(mem, name);
-    if (old_name && (MON_ADDR)addr_location(old_addr) != addr) {
+    if ((old_name && (MON_ADDR)addr_location(old_addr) != addr) && (!silent)) {
         mon_out("Warning: label(s) for address $%04x already exist.\n", loc);
     }
     if (old_addr >= 0) {
-        if (old_addr != loc) {
+        if ((old_addr != loc) && (!silent)) {
             mon_out("Changing address of label %s from $%04x to $%04x\n",
                     name, (unsigned int)old_addr, loc);
         }
@@ -3102,6 +3122,12 @@ void monitor_startup(MEMSPACE mem)
          */
         return;
     }
+    
+    if (ui_pause_active()) {
+        should_pause_on_exit_mon = true;
+        
+        ui_pause_disable();
+    }
 
     if (mem != e_default_space) {
         default_memspace = mem;
@@ -3137,6 +3163,14 @@ void monitor_startup(MEMSPACE mem)
         }
     }
     monitor_close(true);
+    
+    if (pause_on_exit_mon) {
+        pause_on_exit_mon = false;
+        
+        ui_pause_enable();
+        
+        while (ui_pause_loop_iteration());
+    }
 }
 
 static void monitor_trap(uint16_t addr, void *unused_data)

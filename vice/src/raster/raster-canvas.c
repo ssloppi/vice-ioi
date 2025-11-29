@@ -31,6 +31,7 @@
 
 #include "videoarch.h"
 
+#include "ioi-video-output.h"
 #include "lib.h"
 #include "machine.h"
 #include "raster-canvas.h"
@@ -140,7 +141,14 @@ void raster_canvas_init(raster_t *raster)
     raster->update_area->is_null = 1;
 }
 
+void raster_canvas_init_ioi_video_output(struct raster_s *raster)
+{
+    ioi_video_output_init(raster->canvas);
+}
+
 void raster_canvas_shutdown(raster_t *raster)
 {
+    ioi_video_output_close();
+
     lib_free(raster->update_area);
 }

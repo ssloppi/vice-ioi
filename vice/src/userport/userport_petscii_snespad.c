@@ -65,6 +65,7 @@ static void userport_snespad_store_pbx(uint8_t value, int pulse);
 static int userport_petscii_write_snapshot_module(snapshot_t *s);
 static int userport_petscii_read_snapshot_module(snapshot_t *s);
 static int userport_petscii_enable(int val);
+static void userport_petscii_powerup(void);
 
 static userport_device_t userport_snespad_device = {
     "Userport Petscii SNES pad",               /* device name */
@@ -83,6 +84,7 @@ static userport_device_t userport_snespad_device = {
     NULL,                                      /* NO store sp2 pin function */
     NULL,                                      /* NO read sp2 pin function */
     NULL,                                      /* NO reset function */
+    userport_petscii_powerup,                  /* powerup function */
     userport_petscii_write_snapshot_module,    /* snapshot write function */
     userport_petscii_read_snapshot_module      /* snapshot read function */
 };
@@ -122,6 +124,11 @@ int userport_petscii_snespad_resources_init(void)
 }
 
 /* ---------------------------------------------------------------------*/
+
+static void userport_petscii_powerup(void)
+{
+    counter = 0;
+}
 
 static void userport_snespad_store_pbx(uint8_t value, int pulse)
 {
@@ -216,7 +223,7 @@ static uint8_t userport_snespad_read_pbx(uint8_t orig)
    BYTE  | LATCH   | latch line state
  */
 
-static char snap_module_name[] = "UPPETSCII";
+static const char snap_module_name[] = "UPPETSCII";
 #define SNAP_MAJOR   0
 #define SNAP_MINOR   1
 

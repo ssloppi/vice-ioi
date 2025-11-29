@@ -916,6 +916,8 @@ void machine_specific_reset(void)
     plus4tcbm1_reset();
     plus4tcbm2_reset();
 
+    userport_reset();
+
     ted_reset();
 
     sid_reset();
@@ -933,7 +935,11 @@ void machine_specific_reset(void)
 
 void machine_specific_powerup(void)
 {
+    cartridge_powerup();
     ted_reset_registers();
+    userport_powerup();
+    tapeport_powerup();
+    joyport_powerup();
 }
 
 void machine_specific_shutdown(void)
@@ -949,6 +955,8 @@ void machine_specific_shutdown(void)
 #ifdef HAVE_MOUSE
     mouse_shutdown();
 #endif
+
+    sidcart_cmdline_options_shutdown();
 
     if (!console_mode) {
         plus4ui_shutdown();
@@ -1133,7 +1141,7 @@ static userport_port_props_t userport_props = {
     NULL, /* NO flag pin */
     0,    /* port does NOT have the pc pin */
     0,    /* port does NOT have the cnt1, cnt2 or sp pins */
-    0     /* port does NOT have the reset pin */
+    1     /* port has the reset pin */
 };
 
 int machine_register_userport(void)

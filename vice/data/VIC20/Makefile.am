@@ -13,10 +13,12 @@ palettes = \
 	vice.vpl \
 	mike-pal.vpl \
 	mike-ntsc.vpl \
-	colodore_vic.vpl
+	colodore_vic.vpl \
+	PALette.vpl
 
 gtk3_hotkeys = \
 	gtk3-hotkeys.vhk
+	gtk3-hotkeys-mac.vhk
 
 gtk3_keymaps = \
 	gtk3_pos_it.vkm \

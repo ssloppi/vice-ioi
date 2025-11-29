@@ -1129,7 +1129,10 @@ void machine_specific_reset(void)
 
 void machine_specific_powerup(void)
 {
+    cartridge_powerup();
     vicii_reset_registers();
+    userport_powerup();
+    joyport_powerup();
     reset_poweron = 1;
 }
 

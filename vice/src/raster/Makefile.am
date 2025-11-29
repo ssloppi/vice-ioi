@@ -16,6 +16,8 @@ AM_LDFLAGS = @VICE_LDFLAGS@
 noinst_LIBRARIES = libraster.a
 
 libraster_a_SOURCES = \
+	ioi-video-output.c \
+	ioi-video-output.h \
 	raster-cache-const.h \
 	raster-cache-fill-1fff.h \
 	raster-cache-fill-39ff.h \

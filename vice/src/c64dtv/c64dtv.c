@@ -871,6 +871,8 @@ void machine_specific_reset(void)
 void machine_specific_powerup(void)
 {
     vicii_reset_registers();
+    userport_powerup();
+    joyport_powerup();
 }
 
 void machine_specific_shutdown(void)
@@ -886,6 +888,8 @@ void machine_specific_shutdown(void)
     vicii_shutdown();
 
     c64dtvmem_shutdown();
+
+    sid_cmdline_options_shutdown();
 
     if (!console_mode) {
         c64dtvui_shutdown();
@@ -1047,36 +1051,6 @@ uint8_t machine_tape_behaviour(void)
 {
     return TAPE_BEHAVIOUR_NORMAL;
 }
-
-int machine_autodetect_psid(const char *name)
-{
-    return -1;
-}
-
-int tapeport_device_register(int id, tapeport_device_t *device)
-{
-    return 0;
-}
-
-void tapeport_trigger_flux_change(unsigned int on, int port)
-{
-}
-
-void tapeport_set_tape_sense(int sense, int port)
-{
-}
-
-int tapecart_is_valid(const char *filename)
-{
-    return 0;   /* FALSE */
-}
-
-int tapecart_attach_tcrt(const char *filename, void *unused)
-{
-    return -1;
-}
-
-
 
 int machine_addr_in_ram(unsigned int addr)
 {

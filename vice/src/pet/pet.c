@@ -54,6 +54,7 @@
 #include "gfxoutput.h"
 #include "iecdrive.h"
 #include "init.h"
+#include "ioi-video-output.h"
 #include "joyport.h"
 #include "joystick.h"
 #include "kbdbuf.h"
@@ -197,12 +198,25 @@ static joyport_port_props_t joy_adapter_control_port_2 =
     0                       /* port can be switched on/off */
 };
 
+static joyport_port_props_t joy_adapter_control_port_3 =
+{
+    "Joystick adapter port 3",
+    0,                      /* has NO potentiometer connected to this port */
+    0,                      /* has NO lightpen support on this port */
+    0,                      /* has NO joystick adapter on this port */
+    1,                      /* has output support on this port */
+    0                       /* port can be switched on/off */
+};
+
 static int init_joyport_ports(void)
 {
     if (joyport_port_register(JOYPORT_3, &joy_adapter_control_port_1) < 0) {
         return -1;
     }
-    return joyport_port_register(JOYPORT_4, &joy_adapter_control_port_2);
+    if (joyport_port_register(JOYPORT_4, &joy_adapter_control_port_2) < 0) {
+        return -1;
+    }
+    return joyport_port_register(JOYPORT_5, &joy_adapter_control_port_3);
 }
 
 /* PET-specific resource initialization.  This is called before initializing
@@ -736,6 +750,9 @@ void machine_specific_powerup(void)
 {
     petdww_powerup();
     pethre_powerup();
+    userport_powerup();
+    tapeport_powerup();
+    joyport_powerup();
 }
 
 /* PET-specific initialization.  */
@@ -779,6 +796,8 @@ void machine_specific_shutdown(void)
 #ifdef HAVE_MOUSE
     mouse_shutdown();
 #endif
+
+    sidcart_cmdline_options_shutdown();
 
     if (!console_mode) {
         petui_shutdown();

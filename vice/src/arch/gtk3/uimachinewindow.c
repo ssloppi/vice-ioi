@@ -42,15 +42,8 @@
 #endif
 
 #ifdef MACOSX_SUPPORT
-#import <objc/message.h>
 #import <CoreGraphics/CGEvent.h>
 
-/* The proper way to use objc_msgSend is to cast it into the right shape each time */
-#define OBJC_MSGSEND(return_type, ...) ((return_type (*)(__VA_ARGS__))objc_msgSend)
-#define OBJC_MSGSEND_STRET(...) ((void (*)(__VA_ARGS__))objc_msgSend_stret)
-
-/* For some reason this isn't in the GDK quartz headers */
-id gdk_quartz_window_get_nswindow (GdkWindow *window);
 #elif defined(WIN32_COMPILE)
 #include <windows.h>
 #endif
@@ -71,6 +64,10 @@ id gdk_quartz_window_get_nswindow (GdkWindow *window);
 #include "ui.h"
 #include "uimachinemenu.h"
 #include "uimachinewindow.h"
+
+#ifdef MACOSX_SUPPORT
+#include "macOS-util.h"
+#endif
 
 /* FIXME:   someone please add Doxygen docs for this, I can guess what it means
  *          but I'll probably get it wrong. --compyx
@@ -240,6 +237,8 @@ static gboolean event_box_motion_cb(GtkWidget *widget,
         return FALSE;
     }
 
+    pthread_mutex_lock(&canvas->lock);
+
     /* GDK_ENTER_NOTIFY isn't reliable on fullscreen transitions, so we reenable this here too */
     if (canvas->still_frame_callback_id == 0) {
         canvas->still_frame_callback_id =
@@ -260,13 +259,9 @@ static gboolean event_box_motion_cb(GtkWidget *widget,
         gtk_widget_translate_coordinates(widget, gtk_widget_get_toplevel(widget), 0, 0, &widget_x, &widget_y);
 
 #ifdef MACOSX_SUPPORT
-
-        void    *native_window  = gdk_quartz_window_get_nswindow(gtk_widget_get_window(widget));
-        id      content_view    = OBJC_MSGSEND(id, id, SEL)(native_window, sel_getUid("contentView"));
-
         CGRect native_frame, content_rect;
-        OBJC_MSGSEND_STRET(CGRect *, id, SEL)(&native_frame, native_window, sel_getUid("frame"));
-        OBJC_MSGSEND_STRET(CGRect *, id, SEL)(&content_rect, content_view,  sel_getUid("frame"));
+
+        vice_macos_get_widget_frame_and_content_rect(widget, &native_frame, &content_rect);
 
         /* macOS CoreGraphics coordinates origin is bottom-left of primary display */
         size_t main_display_height = CGDisplayPixelsHigh(CGMainDisplayID());
@@ -290,6 +285,7 @@ static gboolean event_box_motion_cb(GtkWidget *widget,
 
 #endif
 
+        pthread_mutex_unlock(&canvas->lock);
         return FALSE;
     }
 
@@ -314,6 +310,7 @@ static gboolean event_box_motion_cb(GtkWidget *widget,
         canvas->pen_y = pen_y;
     }
 
+    pthread_mutex_unlock(&canvas->lock);
     return FALSE;
 }
 
@@ -339,6 +336,8 @@ static gboolean event_box_mouse_button_cb(GtkWidget *widget, GdkEvent *event, gp
 
     if (event->type == GDK_BUTTON_PRESS) {
         int button = ((GdkEventButton *)event)->button;
+
+        pthread_mutex_lock(&canvas->lock);
         if (button == 1) {
             /* Left mouse button */
             canvas->pen_buttons |= LP_HOST_BUTTON_1;
@@ -346,6 +345,7 @@ static gboolean event_box_mouse_button_cb(GtkWidget *widget, GdkEvent *event, gp
             /* Right mouse button */
             canvas->pen_buttons |= LP_HOST_BUTTON_2;
         }
+        pthread_mutex_unlock(&canvas->lock);
 
         /* Don't send button events if the mouse isn't captured */
         if (_mouse_enabled) {
@@ -353,6 +353,8 @@ static gboolean event_box_mouse_button_cb(GtkWidget *widget, GdkEvent *event, gp
         }
     } else if (event->type == GDK_BUTTON_RELEASE) {
         int button = ((GdkEventButton *)event)->button;
+
+        pthread_mutex_lock(&canvas->lock);
         if (button == 1) {
             /* Left mouse button */
             canvas->pen_buttons &= ~LP_HOST_BUTTON_1;
@@ -360,12 +362,14 @@ static gboolean event_box_mouse_button_cb(GtkWidget *widget, GdkEvent *event, gp
             /* Right mouse button */
             canvas->pen_buttons &= ~LP_HOST_BUTTON_2;
         }
+        pthread_mutex_unlock(&canvas->lock);
 
         /* Don't send button events if the mouse isn't captured */
         if (_mouse_enabled) {
             mouse_button(button - 1, 0);
         }
     }
+    
     /* Ignore all other mouse button events, though we'll be sent
      * things like double- and triple-click. */
     return FALSE;
@@ -572,9 +576,11 @@ static gboolean event_box_cross_cb(GtkWidget *widget, GdkEvent *event, gpointer 
                 gtk_widget_remove_tick_callback(canvas->event_box, canvas->still_frame_callback_id);
                 canvas->still_frame_callback_id = 0;
             }
+            pthread_mutex_lock(&canvas->lock);
             canvas->pen_x = -1;
             canvas->pen_y = -1;
             canvas->pen_buttons = 0;
+            pthread_mutex_unlock(&canvas->lock);
         }
     }
 
@@ -662,31 +668,27 @@ void ui_mouse_grab_pointer(void)
 {
     GtkWidget *window;
     float warp_x, warp_y;
-    
+
     if (!_mouse_enabled) {
         return;
     }
 
     window = ui_get_window_by_index(PRIMARY_WINDOW);
-    
+
     if (!window) {
         /* Probably mouse grab via config or command line, we'll grab it later via on_focus_in_event(). */
         return;
     }
-    
+
     /*
      * We warp the mouse to the center of the primary window and move it back there
      * each time we detect mouse movement.
      */
-        
+
 #ifdef MACOSX_SUPPORT
 
-    void *native_window = gdk_quartz_window_get_nswindow(gtk_widget_get_window(window));
-    id   content_view   = OBJC_MSGSEND(id, id, SEL)(native_window, sel_getUid("contentView"));
-
     CGRect native_frame, content_rect;
-    OBJC_MSGSEND_STRET(CGRect *, id, SEL)(&native_frame, native_window, sel_getUid("frame"));
-    OBJC_MSGSEND_STRET(CGRect *, id, SEL)(&content_rect, content_view,  sel_getUid("frame"));
+    vice_macos_get_widget_frame_and_content_rect(window, &native_frame, &content_rect);
 
     /* macOS CoreGraphics coordinates origin is bottom-left of primary display */
     size_t main_display_height = CGDisplayPixelsHigh(CGMainDisplayID());
