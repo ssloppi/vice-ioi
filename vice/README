@@ -1,26 +1,3 @@
-# VICE IOI
-The Versatile Commodore Emulator with additional I/O interfaces for external application communication.
-
-VICE IOI is a port of VICE (Versatile Commodore Emulator) version 3.6.1.
-
-# Intended Use
-This port provides additional interfaces for communicating with third-party applications.
-
-**Supported OS:** Windows 11
-
-If your use case does not require these additional interfaces, you should use the original VICE or another relevant port/emulator.
-
-Original VICE is available at: https://vice-emu.sourceforge.io/
-
-# Bugs and Feature Requests
-This software is provided *as is* and is still a work in progress. It comes with no guarantees or warranties.
-
-There is currently no active channel for reporting issues related to this software.
-
-If you encounter problems, **please do not contact the VICE team** regarding VICE IOI. First, verify that the issue also occurs in the original VICE before reporting it.
-
-
-# Original VICE 3.6.1 readme
 
   VICE  3.6.1                                                        Jan 2022
 
